@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
-	"strings"
 )
 
 // javaRuntime represents a JDK installation for jdtls configuration.
@@ -133,8 +132,8 @@ func detectJavaVersion(jdkPath string) string {
 		return ""
 	}
 	major := m[1]
-	// JDK 8 and below use 1.x naming
-	if strings.HasPrefix(major, "1") {
+	// JDK 8 and below use "1.8.0_xxx" versioning; the regex captures "1".
+	if major == "1" {
 		return ""
 	}
 	return "JavaSE-" + major
