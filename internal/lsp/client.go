@@ -915,7 +915,8 @@ func (c *LSPClient) Initialize(ctx context.Context, rootDir string) error {
 					"dynamicRegistration": true,
 				},
 				"documentSymbol": map[string]any{
-					"dynamicRegistration": true,
+					"dynamicRegistration":              true,
+					"hierarchicalDocumentSymbolSupport": true,
 				},
 				"rename": map[string]any{
 					"dynamicRegistration": true,
