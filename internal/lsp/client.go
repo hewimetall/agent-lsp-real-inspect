@@ -1083,6 +1083,17 @@ func (c *LSPClient) Initialize(ctx context.Context, rootDir string) error {
 				"java": map[string]any{},
 			},
 		})
+		// jdtls builds its classpath model during Gradle/Maven import. Files
+		// opened before the import completes aren't associated with the project.
+		// Wait for the import to finish, then reopen all documents so jdtls
+		// reassociates them with the now-available classpath.
+		go func() {
+			c.WaitForWorkspaceReadyTimeout(context.Background(), 120*time.Second)
+			if docs := c.GetOpenDocuments(); len(docs) > 0 {
+				logging.Log(logging.LevelInfo, fmt.Sprintf("jdtls import complete, reopening %d documents", len(docs)))
+				_ = c.ReopenAllDocuments(context.Background())
+			}
+		}()
 	}
 
 	return nil
