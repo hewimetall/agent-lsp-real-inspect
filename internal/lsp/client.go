@@ -330,12 +330,25 @@ func (c *LSPClient) GetDaemonInfo() *DaemonInfo {
 
 // start spawns the subprocess and begins reading responses.
 func (c *LSPClient) start() error {
-	cmd := exec.Command(c.serverPath, c.serverArgs...)
-	// Strip GOWORK from the subprocess environment. The inherited shell value
-	// is a session artifact pointing at whatever workspace the user had active,
-	// which is almost never the workspace being analyzed here. Removing it lets
-	// gopls discover the correct go.work naturally by walking up from root_dir.
-	cmd.Env = removeEnv(os.Environ(), "GOWORK")
+	args := c.serverArgs
+	env := removeEnv(os.Environ(), "GOWORK")
+
+	// jdtls needs JDK 21+ to run, but Gradle needs JAVA_HOME to point to
+	// a JDK matching the project's toolchain requirement. Use --java-executable
+	// to run jdtls on JDK 21 while setting JAVA_HOME to the lowest detected
+	// JDK for Gradle's toolchain resolver.
+	if c.isJDTLS() {
+		runtimes := detectJavaRuntimes()
+		if jdk21 := findJDKAtLeast(runtimes, 21); jdk21 != "" {
+			args = append([]string{"--java-executable", filepath.Join(jdk21, "bin", "java")}, args...)
+		}
+		if lowest := lowestJDKPath(runtimes); lowest != "" {
+			env = append(removeEnv(env, "JAVA_HOME"), "JAVA_HOME="+lowest)
+		}
+	}
+
+	cmd := exec.Command(c.serverPath, args...)
+	cmd.Env = env
 	// Set the working directory to the project root. This is critical for jdtls,
 	// which hashes os.getcwd() to compute its workspace data directory. Without
 	// this, the data directory is keyed to the wrong path and the Gradle/Maven
@@ -960,31 +973,10 @@ func (c *LSPClient) Initialize(ctx context.Context, rootDir string) error {
 	// jdtls starts but silently skips project import and never indexes.
 	if c.isJDTLS() {
 		runtimes := detectJavaRuntimes()
-		gradleSettings := map[string]any{
-			"enabled": true,
-		}
-		// Pass detected JDK paths to Gradle's toolchain resolver. The Gradle
-		// daemon runs as a separate process via Buildship's Tooling API.
-		// gradle.arguments doesn't work (Buildship doesn't pass them through).
-		// jvmArguments sets JVM system properties on the Gradle daemon process,
-		// which the toolchain resolver reads.
-		if len(runtimes) > 0 {
-			var paths []string
-			for _, r := range runtimes {
-				if p, ok := r["path"].(string); ok {
-					paths = append(paths, p)
-				}
-			}
-			if len(paths) > 0 {
-				gradleSettings["jvmArguments"] = []string{
-					"-Dorg.gradle.java.installations.paths=" + strings.Join(paths, ","),
-				}
-			}
-		}
 		javaSettings := map[string]any{
 			"import": map[string]any{
 				"maven":  map[string]any{"enabled": true},
-				"gradle": gradleSettings,
+				"gradle": map[string]any{"enabled": true},
 			},
 			"autobuild": map[string]any{
 				"enabled": true,

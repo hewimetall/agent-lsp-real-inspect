@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -91,6 +92,32 @@ func detectJavaRuntimes() []map[string]any {
 }
 
 var javaVersionRe = regexp.MustCompile(`"(\d+)`)
+
+// findJDKAtLeast returns the path of the lowest-version detected JDK that is
+// >= the given major version. Returns empty string if none found.
+func findJDKAtLeast(runtimes []map[string]any, minMajor int) string {
+	target := fmt.Sprintf("JavaSE-%d", minMajor)
+	for _, r := range runtimes {
+		if name, _ := r["name"].(string); name >= target {
+			if path, _ := r["path"].(string); path != "" {
+				return path
+			}
+		}
+	}
+	return ""
+}
+
+// lowestJDKPath returns the path of the lowest-version detected JDK.
+func lowestJDKPath(runtimes []map[string]any) string {
+	if len(runtimes) == 0 {
+		return ""
+	}
+	// Runtimes are sorted by name, so first is lowest.
+	if path, _ := runtimes[0]["path"].(string); path != "" {
+		return path
+	}
+	return ""
+}
 
 // detectJavaVersion runs java -version and returns a JavaSE name like "JavaSE-17".
 func detectJavaVersion(jdkPath string) string {
