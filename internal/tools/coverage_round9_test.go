@@ -151,10 +151,10 @@ func TestCreateFileURI_RelativePath(t *testing.T) {
 }
 
 func TestCreateFileURI_EmptyPath(t *testing.T) {
-	// Test that empty path doesn't panic
+	// Test that empty path returns empty string (documented behavior in PathToFileURI)
 	uri := CreateFileURI("")
-	if uri == "" {
-		t.Error("expected non-empty URI even for empty path")
+	if uri != "" {
+		t.Errorf("expected empty URI for empty path, got %q", uri)
 	}
 }
 
