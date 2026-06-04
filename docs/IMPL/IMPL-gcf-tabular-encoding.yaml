@@ -814,5 +814,5 @@ pre_mortem:
           mitigation: |
             Agent A should try v0.1.1 first, fall back to v0.1.0 or latest. The
             Encode wrapper isolates the rest of the codebase from API changes.
-state: SCOUT_PENDING
+state: "REVIEWED"
 injection_method: hook
