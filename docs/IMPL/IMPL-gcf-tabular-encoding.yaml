@@ -36,6 +36,9 @@ suitability_assessment: |
 build_command: GOWORK=off go build ./...
 test_command: GOWORK=off go test ./internal/... ./cmd/...
 lint_command: GOWORK=off go vet ./...
+scaffolds:
+    - file_path: internal/encoding/gcf/encode.go
+      status: committed
 file_ownership:
     - file: go.mod
       agent: A
