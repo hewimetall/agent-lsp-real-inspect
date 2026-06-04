@@ -1,0 +1,40 @@
+{
+  "entries": {
+    "462bd7297b5070c0f71885a1a16892bc": {
+      "test": {
+        "gate_type": "test",
+        "command": "GOWORK=off go test ./internal/... ./cmd/...",
+        "passed": true,
+        "exit_code": 0,
+        "stdout": "ok  \tgithub.com/blackwell-systems/agent-lsp/internal/audit\t0.361s\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/config\t0.422s\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/extensions\t0.511s\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/httpauth\t0.378s\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/logging\t0.420s\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/lsp\t148.364s\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/notify\t2.491s\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/phase\t0.612s\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/resources\t4.945s\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/session\t1.253s\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/tools\t1.804s\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/types\t1.566s\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/uri\t1.378s\nok  \tgithub.com/blackwell-systems/agent-lsp/cmd/agent-lsp\t2.009s\n",
+        "stderr": "",
+        "from_cache": true,
+        "cached_at": "2026-06-04T02:56:31.051707-07:00"
+      }
+    },
+    "4fbf8ee7c8bccde546231b999e6ada8d": {
+      "build": {
+        "gate_type": "build",
+        "command": "go build ./...",
+        "passed": false,
+        "exit_code": 1,
+        "stdout": "",
+        "stderr": "go: cannot load module /Users/code/shelfctl listed in go.work file: open /Users/code/shelfctl/go.mod: no such file or directory\n",
+        "from_cache": true,
+        "cached_at": "2026-06-04T02:53:57.360808-07:00"
+      }
+    },
+    "ded5035f1fbcc4d1763bd34b8c8b18da": {
+      "lint": {
+        "gate_type": "lint",
+        "command": "go vet ./...",
+        "passed": false,
+        "exit_code": 1,
+        "stdout": "",
+        "stderr": "go: cannot load module /Users/code/shelfctl listed in go.work file: open /Users/code/shelfctl/go.mod: no such file or directory\n",
+        "from_cache": true,
+        "cached_at": "2026-06-04T02:53:57.490568-07:00"
+      }
+    }
+  }
+}
