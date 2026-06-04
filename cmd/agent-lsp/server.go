@@ -38,6 +38,7 @@ import (
 	"github.com/blackwell-systems/agent-lsp/internal/phase"
 	"github.com/blackwell-systems/agent-lsp/internal/resources"
 	"github.com/blackwell-systems/agent-lsp/internal/session"
+	"github.com/blackwell-systems/agent-lsp/internal/tools"
 	"github.com/blackwell-systems/agent-lsp/internal/types"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -139,6 +140,10 @@ func addToolWithPhaseCheck[T any](d toolDeps, tool *mcp.Tool, handler func(ctx c
 	mcp.AddTool(d.server, tool, func(ctx context.Context, req *mcp.CallToolRequest, args T) (*mcp.CallToolResult, any, error) {
 		if result := checkPhasePermission(d.phaseTracker, toolName); result != nil {
 			return result, nil, nil
+		}
+		// Inject output format into context so EncodeResult picks it up.
+		if d.outputFormat != "" && d.outputFormat != "json" {
+			ctx = tools.ContextWithOutputFormat(ctx, d.outputFormat)
 		}
 		start := time.Now()
 		result, structured, err := handler(ctx, req, args)
