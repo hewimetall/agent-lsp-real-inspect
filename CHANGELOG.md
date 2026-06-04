@@ -3,14 +3,27 @@
 All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, Semantic Versioning.
 
-## [Unreleased]
+## [0.13.0] - 2026-06-04
 
 ### Added
-- **GCF output format**: All 66 tool handlers now support [GCF (Graph Compact Format)](https://github.com/blackwell-systems/gcf) as an optional output encoding. GCF replaces JSON field-name repetition with positional encoding, reducing tool response tokens by 34-44% on structured data. Enable with `AGENT_LSP_OUTPUT_FORMAT=gcf`. JSON remains the default.
+- **GCF output (30-51% fewer tokens)**: All 66 tool handlers now output [GCF (Graph Compact Format)](https://github.com/blackwell-systems/gcf) by default. GCF replaces JSON field-name repetition with positional encoding. Measured savings: 50.6% on list_symbols, 49.1% on find_references, 37.6% on get_diagnostics, 30.6% on blast_radius. Set `AGENT_LSP_OUTPUT_FORMAT=json` to revert.
   - New package: `internal/encoding/gcf/` wrapping `gcf-go` `EncodeGeneric`
   - New helper: `EncodeResult(ctx, data)` in `internal/tools/helpers.go` switches JSON vs GCF based on context
   - Format injected automatically via `addToolWithPhaseCheck`; no per-handler configuration needed
   - New dependency: `github.com/blackwell-systems/gcf-go` v0.1.1
+- **`AGENT_LSP_OUTPUT_FORMAT` environment variable**: Controls output encoding (`gcf` default, `json` to revert)
+- **Enum constraints** on `direction`, `detail_level`, and `level` parameters (improves schema quality for MCP clients)
+- **Standalone mcp-assert workflow**: `gh workflow run mcp-assert.yml` for independent CI testing
+- **New documentation**:
+  - `docs/getting-started/mcp-clients.md`: copy-paste configs for Claude Code, Cursor, Windsurf, Continue.dev
+  - `docs/getting-started/troubleshooting.md`: common issues and fixes
+  - `docs/guide/common-workflows.md`: "I want to..." mapped to tools and skills
+  - `docs/reference/env-vars.md`: all `AGENT_LSP_*` variables
+  - `scripts/gcf-benchmark.go`: reproducible GCF vs JSON token comparison
+
+### Changed
+- **Documentation restructured** into `getting-started/`, `guide/`, `reference/`, `architecture/` for clearer navigation
+- **mcp-assert CI**: 3,535 errors reduced to 0 errors, 87/87 assertions passing
 
 ## [0.12.0] - 2026-06-02
 
