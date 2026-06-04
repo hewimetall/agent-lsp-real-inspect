@@ -1,3 +1,4 @@
+completion_date: "2026-06-04"
 title: GCF Tabular Encoding Integration
 feature_slug: gcf-tabular-encoding
 verdict: SUITABLE
@@ -757,6 +758,7 @@ waves:
           dependencies:
             - A
             - B
+      base_commit: 2df3099316a107469f29a676ee7368c0d907aafc
 quality_gates:
     level: standard
     gates:
@@ -827,6 +829,52 @@ completion_reports:
             - TestEncodeResult_JSONMarshalError
         verification: PASS
         notes: Context helpers, EncodeResult, and toolDeps.outputFormat field all implemented. 7 tests passing. GCF stub returns empty string; tests will strengthen once Agent A completes gcf-go integration.
+    C:
+        status: complete
+        branch: polywave/gcf-tabular-encoding/wave2-agent-C
+        commit: edf28f6
+        files_changed:
+            - internal/tools/change_impact.go
+            - internal/tools/change_impact_test.go
+        tests_added:
+            - TestChangeImpact_EncodeResult_GCF/gcf_format_produces_non-empty_output_different_from_json
+            - TestChangeImpact_EncodeResult_GCF/json_format_regression
+            - TestChangeImpact_EncodeResult_GCF/default_format_is_json
+        verification: PASS
+        notes: Replaced json.Marshal with EncodeResult in HandleGetChangeImpact. Removed unused encoding/json import. Added 3 subtests covering GCF output, JSON regression, and default format behavior.
+    D:
+        status: complete
+        branch: polywave/gcf-tabular-encoding/wave2-agent-D
+        commit: f20381b
+        files_changed:
+            - internal/tools/navigation.go
+            - internal/tools/analysis.go
+            - internal/tools/symbol_path.go
+            - internal/tools/coverage_round3_test.go
+        verification: PASS
+        notes: Migrated locationsResult to accept ctx and use EncodeResult. Updated all callers in navigation.go (5 handlers), symbol_path.go (1 caller), and coverage_round3_test.go (2 callers). Migrated HandleGetDocumentSymbols JSON marshal path to EncodeResult. All tests pass, all postconditions verified.
+    E:
+        status: complete
+        branch: polywave/gcf-tabular-encoding/wave2-agent-E
+        commit: cbb1fc6
+        files_changed:
+            - internal/tools/callhierarchy.go
+            - internal/tools/cross_repo.go
+        verification: PASS
+        notes: Migrated both HandleCallHierarchy and HandleGetCrossRepoReferences to use EncodeResult. Removed unused encoding/json imports from both files. Build, vet, and tests all pass.
+    F:
+        status: complete
+        branch: polywave/gcf-tabular-encoding/wave2-agent-F
+        commit: 79e0b44
+        files_changed:
+            - internal/tools/explore.go
+            - internal/tools/explore_test.go
+        tests_added:
+            - TestExploreResult_GCFEncoding
+            - TestExploreResult_GCFEncoding/default_json
+            - TestExploreResult_GCFEncoding/gcf_format
+        verification: PASS
+        notes: Migrated HandleExploreSymbol to use EncodeResult. Removed unused encoding/json import. Added GCF integration test covering both JSON default and GCF format modes.
 pre_mortem:
     overall_risk: medium
     rows:
@@ -861,5 +909,5 @@ pre_mortem:
           mitigation: |
             Agent A should try v0.1.1 first, fall back to v0.1.0 or latest. The
             Encode wrapper isolates the rest of the codebase from API changes.
-state: REVIEWED
+state: COMPLETE
 injection_method: hook

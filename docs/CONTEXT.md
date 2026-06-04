@@ -83,3 +83,5 @@
   - IMPL doc: docs/IMPL/complete/IMPL-inspector-evolution.yaml
 - **agent-dx-improvements**: completed 2026-05-10, 2 waves, 6 agents
   - IMPL doc: docs/IMPL/complete/IMPL-agent-dx-improvements.yaml
+- **gcf-tabular-encoding**: completed 2026-06-04, 2 waves, 6 agents
+  - IMPL doc: docs/IMPL/complete/IMPL-gcf-tabular-encoding.yaml
