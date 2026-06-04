@@ -6,15 +6,11 @@ Add GCF (Graph Compact Format) as a native output format for agent-lsp's MCP too
 
 ## Quick Start
 
+GCF is enabled by default. To revert to JSON:
+
 ```bash
-# Enable GCF output for all tool responses
-export AGENT_LSP_OUTPUT_FORMAT=gcf
-
-# Start agent-lsp normally
-agent-lsp
+export AGENT_LSP_OUTPUT_FORMAT=json
 ```
-
-Unset or set to `json` to revert to default JSON output.
 
 ## Measured Token Savings
 

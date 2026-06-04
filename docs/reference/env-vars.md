@@ -6,7 +6,7 @@ All environment variables are optional. agent-lsp works with no configuration.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AGENT_LSP_OUTPUT_FORMAT` | `json` | Output encoding for tool responses. Set to `gcf` to enable [GCF tabular encoding](../guide/gcf-integration.md) (34-44% fewer tokens). |
+| `AGENT_LSP_OUTPUT_FORMAT` | `gcf` | Output encoding for tool responses. [GCF tabular encoding](../guide/gcf-integration.md) saves 30-51% tokens. Set to `json` to revert. |
 | `AGENT_LSP_BROKER_TIMEOUT_MS` | `30000` | Timeout in milliseconds for the daemon broker to start. Increase on slow machines or when language servers take long to initialize. |
 | `AGENT_LSP_TOKEN` | (none) | Bearer token for HTTP mode authentication. Required when running with `--http`. Never pass on the command line; use this env var instead. |
 

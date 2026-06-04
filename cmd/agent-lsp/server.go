@@ -293,13 +293,13 @@ type toolDeps struct {
 }
 
 // getOutputFormat reads the output format from the AGENT_LSP_OUTPUT_FORMAT
-// environment variable. Returns "json" if unset or empty.
-// Set to "gcf" to enable GCF tabular encoding for all tool responses.
+// environment variable. Defaults to "gcf" (34-51% fewer tokens).
+// Set to "json" to revert to JSON encoding.
 func getOutputFormat() string {
 	if v := os.Getenv("AGENT_LSP_OUTPUT_FORMAT"); v != "" {
 		return v
 	}
-	return "json"
+	return "gcf"
 }
 
 // Run creates and starts the MCP server.

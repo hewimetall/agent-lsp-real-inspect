@@ -18,23 +18,7 @@ Add to your project's `.mcp.json` or global `~/.claude/settings.json`:
 }
 ```
 
-Or with GCF output enabled:
-
-```json
-{
-  "mcpServers": {
-    "agent-lsp": {
-      "command": "agent-lsp",
-      "args": [],
-      "env": {
-        "AGENT_LSP_OUTPUT_FORMAT": "gcf"
-      }
-    }
-  }
-}
-```
-
-Then run `claude` in your project directory. agent-lsp will appear as an available MCP server.
+Then run `claude` in your project directory. agent-lsp will appear as an available MCP server. GCF output is enabled by default (30-51% fewer tokens).
 
 ## Cursor
 

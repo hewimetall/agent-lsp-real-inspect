@@ -97,12 +97,13 @@ agent-lsp supports [GCF (Graph Compact Format)](https://github.com/blackwell-sys
 | `get_diagnostics` (5) | ~213 tokens | ~133 tokens | **37.6%** |
 | `blast_radius` (5) | ~526 tokens | ~365 tokens | **30.6%** |
 
+GCF is enabled by default. To revert to JSON:
+
 ```bash
-# Enable GCF output for all tool responses
-export AGENT_LSP_OUTPUT_FORMAT=gcf
+export AGENT_LSP_OUTPUT_FORMAT=json
 ```
 
-JSON remains the default. Savings grow with record count (30-51% measured). Benchmark: `go run scripts/gcf-benchmark.go`. See [docs/guide/gcf-integration.md](./docs/guide/gcf-integration.md) for architecture details.
+Savings grow with record count (30-51% measured). Benchmark: `go run scripts/gcf-benchmark.go`. See [docs/guide/gcf-integration.md](./docs/guide/gcf-integration.md) for architecture details.
 
 ### Why orchestration matters
 
