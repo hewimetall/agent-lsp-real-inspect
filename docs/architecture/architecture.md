@@ -1627,6 +1627,6 @@ The Hub is connected to the MCP server in `cmd/agent-lsp/notifications.go`. `hub
 ## See also
 
 - [Home](index.md): project overview, setup, and quick start
-- [docs/tools.md](./tools.md): full tool reference with parameters and examples
-- [docs/skills.md](./skills.md): skill reference with workflows and composition patterns
-- [docs/language-support.md](./language-support.md): language coverage matrix
+- [Tools reference](../reference/tools.md): full tool reference with parameters and examples
+- [Skills reference](../guide/skills.md): skill reference with workflows and composition patterns
+- [Language support](../reference/language-support.md): language coverage matrix

@@ -837,7 +837,7 @@ Runtime enforcement of skill phase ordering. Prevents agents from calling tools 
 
 Phase events logged to JSONL audit trail: `activate_skill`, `deactivate_skill`, `phase_advance`, `phase_violation`.
 
-See [docs/phase-enforcement.md](./phase-enforcement.md) for the full design document.
+See [Phase enforcement](../guide/phase-enforcement.md) for the full design document.
 
 ---
 
@@ -1459,7 +1459,7 @@ agent-lsp is tested through the MCP protocol layer using [mcp-assert](https://gi
 
 ## Agent Self-Evaluations
 
-Four independent AI agents evaluated agent-lsp across 10 coding tasks (find callers, rename safely, preview edits, detect dead code). Each model wrote an honest assessment comparing LSP tools against grep/read equivalents. Results documented in [docs/agent-evaluations.md](./agent-evaluations.md).
+Four independent AI agents evaluated agent-lsp across 10 coding tasks (find callers, rename safely, preview edits, detect dead code). Each model wrote an honest assessment comparing LSP tools against grep/read equivalents. Results documented in [Agent evaluations](agent-evaluations.md).
 
 | Model | Verdict | Top-rated tools |
 |-------|---------|----------------|

@@ -3146,7 +3146,7 @@ still executes on all other files.
 Runtime enforcement of skill phase ordering. When an agent activates a skill,
 tool calls are checked against the skill's declared phase permissions. Phases
 advance automatically as the agent calls tools from later phases. See
-[docs/phase-enforcement.md](./phase-enforcement.md) for the full design.
+[Phase enforcement](../guide/phase-enforcement.md) for the full design.
 
 ### `activate_skill`
 
@@ -3270,5 +3270,5 @@ Skills work with any MCP client that supports tool use, not just Claude Code.
 
 ## See also
 
-- [docs/skills.md](./skills.md): skill reference with workflows, use cases, and composition patterns
-- [docs/language-support.md](./language-support.md): language coverage matrix and per-language tool support
+- [Skills reference](../guide/skills.md): skill reference with workflows, use cases, and composition patterns
+- [Language support](language-support.md): language coverage matrix and per-language tool support

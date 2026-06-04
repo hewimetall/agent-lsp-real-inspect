@@ -79,4 +79,4 @@ winget install BlackwellSystems.agent-lsp
 agent-lsp doctor
 ```
 
-This probes each configured language server and reports capabilities. Fix any failures before proceeding. See [language support](../language-support.md) for install commands and server-specific notes.
+This probes each configured language server and reports capabilities. Fix any failures before proceeding. See [language support](../reference/language-support.md) for install commands and server-specific notes.

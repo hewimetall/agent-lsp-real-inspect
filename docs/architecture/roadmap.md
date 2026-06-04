@@ -829,7 +829,7 @@ Agent calls rename_symbol  -> phase = "execute", apply_edit now allowed
 - `/lsp-safe-edit` (4 phases: setup, speculative_preview, apply, verify_and_fix)
 - `/lsp-verify` (5 phases: test_correlation, diagnostics, build, tests, fix_and_format)
 
-See [docs/phase-enforcement.md](phase-enforcement.md) for the full design document.
+See [docs/../guide/phase-enforcement.md](../guide/phase-enforcement.md) for the full design document.
 
 ## Bigger Bets
 

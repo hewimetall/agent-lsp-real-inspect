@@ -80,11 +80,11 @@ Simulate changes in memory before writing to disk. No other MCP-LSP implementati
 
 `preview_edit` previews the diagnostic impact of any edit. You see exactly what breaks before the file is touched. `simulate_chain` evaluates a sequence of dependent edits (rename a function, update all callers, change the return type) and reports which step first introduces an error.
 
-8 speculative execution tools. See [docs/speculative-execution.md](./docs/speculative-execution.md) for the full workflow.
+8 speculative execution tools. See [docs/guide/speculative-execution.md](./docs/guide/speculative-execution.md) for the full workflow.
 
 ### Token savings
 
-Structured LSP responses use **5-34x fewer tokens** than grep/read on the same tasks. On HashiCorp Consul (319K lines), a blast-radius analysis uses 17.7MB via grep vs 841KB via LSP, reducing 5,534 tool calls to 119. Savings scale with codebase size. See [docs/token-savings.md](./docs/token-savings.md) for the full experiment across five codebases.
+Structured LSP responses use **5-34x fewer tokens** than grep/read on the same tasks. On HashiCorp Consul (319K lines), a blast-radius analysis uses 17.7MB via grep vs 841KB via LSP, reducing 5,534 tool calls to 119. Savings scale with codebase size. See [docs/guide/token-savings.md](./docs/guide/token-savings.md) for the full experiment across five codebases.
 
 ### Token-optimized output (GCF)
 
@@ -95,7 +95,7 @@ agent-lsp supports [GCF (Graph Compact Format)](https://github.com/blackwell-sys
 export AGENT_LSP_OUTPUT_FORMAT=gcf
 ```
 
-JSON remains the default when the variable is unset. See [docs/gcf-integration.md](./docs/gcf-integration.md) for architecture details.
+JSON remains the default when the variable is unset. See [docs/guide/gcf-integration.md](./docs/guide/gcf-integration.md) for architecture details.
 
 ### Why orchestration matters
 
@@ -113,7 +113,7 @@ Skills tell agents the correct order of operations. Phase enforcement makes the 
 
 When an agent activates a skill, every tool call is checked against the current phase's permissions. Calling `apply_edit` during blast-radius analysis doesn't silently proceed; it returns an error with specific recovery guidance ("complete the blast_radius phase first, allowed tools: [blast_radius, find_references]"). Phases advance automatically as the agent calls tools from later phases.
 
-No other MCP tool provider enforces workflow ordering at runtime. See [docs/phase-enforcement.md](./docs/phase-enforcement.md).
+No other MCP tool provider enforces workflow ordering at runtime. See [docs/guide/phase-enforcement.md](./docs/guide/phase-enforcement.md).
 
 ### Concurrency analysis
 
@@ -146,7 +146,7 @@ Symbol edit tools (`replace_symbol_body`, `insert_after_symbol`, `insert_before_
 
 Raw tools get ignored. Skills get used. Each skill encodes the correct tool sequence so workflows actually happen without per-prompt orchestration instructions. Skills are available as [AgentSkills](https://github.com/anthropics/agent-skills) slash commands and as MCP prompts via `prompts/list` / `prompts/get` for any MCP client.
 
-See [docs/skills.md](./docs/skills.md) for full descriptions and usage guidance.
+See [docs/guide/skills.md](./docs/guide/skills.md) for full descriptions and usage guidance.
 
 **Before you change anything**
 
@@ -293,7 +293,7 @@ Install the servers for your stack. Common ones:
 | C / C++ | `clangd` | `apt install clangd` / `brew install llvm` |
 | Ruby | `solargraph` | `gem install solargraph` |
 
-Full list of 30 supported languages in [docs/language-support.md](./docs/language-support.md).
+Full list of 30 supported languages in [docs/reference/language-support.md](./docs/reference/language-support.md).
 
 ### Step 3: Verify setup
 
@@ -301,7 +301,7 @@ Full list of 30 supported languages in [docs/language-support.md](./docs/languag
 agent-lsp doctor
 ```
 
-Probes each configured language server and reports capabilities. Fix any failures before proceeding. See [language support](./docs/language-support.md) for install commands and server-specific notes.
+Probes each configured language server and reports capabilities. Fix any failures before proceeding. See [language support](./docs/reference/language-support.md) for install commands and server-specific notes.
 
 ### Step 4: Configure your AI tool
 
@@ -357,7 +357,7 @@ For Claude Code, add `mcp__lsp__*` to your permissions allow list so all 65 tool
 
 Without this, Claude Code will prompt for permission on each tool call. Other MCP clients handle permissions differently; check your client's documentation.
 
-Skills are multi-tool workflows that encode reliable procedures: blast-radius check before edit, speculative preview before write, test run after change. See [docs/skills.md](./docs/skills.md) for the full list.
+Skills are multi-tool workflows that encode reliable procedures: blast-radius check before edit, speculative preview before write, test run after change. See [docs/guide/skills.md](./docs/guide/skills.md) for the full list.
 
 ### Step 7: Start working
 
@@ -401,30 +401,30 @@ This is what the agent does, not something you type. Then use any of the 65 tool
 
 Go, Python, TypeScript, Rust, Java, C, C++, C#, Ruby, PHP, Kotlin, Swift, Scala, Zig, Lua, Elixir, Gleam, Clojure, Dart, Terraform, Nix, Prisma, SQL, MongoDB, JavaScript, YAML, JSON, Dockerfile, CSS, HTML.
 
-See [docs/language-support.md](./docs/language-support.md) for the full coverage matrix.
+See [docs/reference/language-support.md](./docs/reference/language-support.md) for the full coverage matrix.
 
 ## Tools
 
 65 tools covering navigation, analysis, refactoring, symbol editing, composite exploration, safe editing, speculative execution, and session lifecycle. All CI-verified.
 
-See [docs/tools.md](./docs/tools.md) for the full reference with parameters and examples.
+See [docs/reference/tools.md](./docs/reference/tools.md) for the full reference with parameters and examples.
 
 ## Further reading
 
 ### Documentation
 
-- [Tools reference](./docs/tools.md): full tool reference with parameters and examples
-- [Skills reference](./docs/skills.md): skill reference, workflows, use cases, and composition
-- [Language support](./docs/language-support.md): language coverage matrix
-- [Architecture](./docs/architecture.md): system design and internals
-- [Speculative execution](./docs/speculative-execution.md): simulate-before-apply workflows
-- [LSP conformance](./docs/lsp-conformance.md): LSP 3.17 spec coverage
+- [Tools reference](./docs/reference/tools.md): full tool reference with parameters and examples
+- [Skills reference](./docs/guide/skills.md): skill reference, workflows, use cases, and composition
+- [Language support](./docs/reference/language-support.md): language coverage matrix
+- [Architecture](./docs/architecture/architecture.md): system design and internals
+- [Speculative execution](./docs/guide/speculative-execution.md): simulate-before-apply workflows
+- [LSP conformance](./docs/reference/lsp-conformance.md): LSP 3.17 spec coverage
 - [Docker](./DOCKER.md): Docker tags, compose, and volume caching
 
 ### Contributing
 
-- [CI notes](./docs/ci-notes.md): CI quirks and test harness details
-- [Distribution](./docs/distribution.md): install channels and release pipeline
+- [CI notes](./docs/architecture/ci-notes.md): CI quirks and test harness details
+- [Distribution](./docs/architecture/distribution.md): install channels and release pipeline
 
 ## Development
 
@@ -449,7 +449,7 @@ defer client.Shutdown(ctx)
 locs, err := client.GetDefinition(ctx, fileURI, lsp.Position{Line: 10, Character: 4})
 ```
 
-See [docs/architecture.md](./docs/architecture.md) for the full package API.
+See [docs/architecture/architecture.md](./docs/architecture/architecture.md) for the full package API.
 
 ## License
 

@@ -19,7 +19,7 @@ Install the servers for your stack:
 | C / C++ | `clangd` | `apt install clangd` / `brew install llvm` |
 | Ruby | `solargraph` | `gem install solargraph` |
 
-Full list of 30 supported languages in [language support](../language-support.md).
+Full list of 30 supported languages in [language support](../reference/language-support.md).
 
 ## 2. Configure your AI tool
 
@@ -58,7 +58,7 @@ cd /tmp/agent-lsp-skills/skills && ./install.sh --copy
 
 Skills are prompt files copied into your AI tool's configuration -- `--copy` means the clone can be safely deleted afterward.
 
-Skills are multi-tool workflows that encode reliable procedures -- blast-radius check before edit, speculative preview before write, test run after change. See the [skills reference](../skills.md) for the full list.
+Skills are multi-tool workflows that encode reliable procedures -- blast-radius check before edit, speculative preview before write, test run after change. See the [skills reference](../guide/skills.md) for the full list.
 
 ## 4. Start working
 

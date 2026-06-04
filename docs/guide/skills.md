@@ -12,7 +12,7 @@ All 24 skills conform to the [Agent Skills](https://agentskills.io/) open standa
 - **MCP prompts:** Any MCP client discovers all 24 skills via `prompts/list` and retrieves full workflow instructions via `prompts/get`. No installation step required; skill definitions are embedded in the binary.
 - **AgentSkills install:** `./skills/install.sh` copies SKILL.md files to your AI tool's skill directory for slash command access.
 
-See the [Setup guide](getting-started/quickstart.md) for installation instructions. For the individual tools that skills compose, see [docs/tools.md](./tools.md). For the full AgentSkills specification, see [agentskills.io/specification](https://agentskills.io/specification).
+See the [Setup guide](../getting-started/quickstart.md) for installation instructions. For the individual tools that skills compose, see [Tools reference](../reference/tools.md). For the full AgentSkills specification, see [agentskills.io/specification](https://agentskills.io/specification).
 
 ## Quick example
 
@@ -478,7 +478,7 @@ workflow is complete, call `deactivate_skill`.
 Two enforcement modes: `warn` (log violation, allow the call) and `block` (return
 error with recovery guidance). Default is `warn`.
 
-See [docs/phase-enforcement.md](./phase-enforcement.md) for the full design, all
+See [Phase enforcement](phase-enforcement.md) for the full design, all
 phase tables, and architecture details.
 
 ---
@@ -516,6 +516,6 @@ Composes `detect_lsp_servers`, `find_symbol`, `list_symbols`, and `blast_radius`
 
 ## See also
 
-- [docs/tools.md](./tools.md): full tool reference with parameters and examples
-- [docs/phase-enforcement.md](./phase-enforcement.md): phase enforcement design, all phase configs, architecture
-- [docs/language-support.md](./language-support.md): language coverage matrix and per-language tool support
+- [Tools reference](../reference/tools.md): full tool reference with parameters and examples
+- [Phase enforcement](phase-enforcement.md): phase enforcement design, all phase configs, architecture
+- [Language support](../reference/language-support.md): language coverage matrix and per-language tool support
