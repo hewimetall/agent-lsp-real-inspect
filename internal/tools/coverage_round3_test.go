@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"testing"
 
 	"github.com/blackwell-systems/agent-lsp/internal/types"
@@ -269,7 +270,7 @@ func TestFormatLocations_InvalidURI(t *testing.T) {
 // --- locationsResult ---
 
 func TestLocationsResult_Empty(t *testing.T) {
-	result, err := locationsResult(nil)
+	result, err := locationsResult(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -282,7 +283,7 @@ func TestLocationsResult_InvalidURI(t *testing.T) {
 	locs := []types.Location{
 		{URI: "not-a-file-uri"},
 	}
-	result, err := locationsResult(locs)
+	result, err := locationsResult(context.Background(), locs)
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
 	}
