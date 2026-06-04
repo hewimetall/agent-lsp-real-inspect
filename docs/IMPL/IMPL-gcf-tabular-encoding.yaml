@@ -1,0 +1,817 @@
+title: GCF Tabular Encoding Integration
+feature_slug: gcf-tabular-encoding
+verdict: SUITABLE
+suitability_assessment: |
+    Suitability gate results:
+
+    1. File decomposition: Yes. Work spans 10+ files across 3 packages (internal/encoding/gcf/,
+       internal/tools/, cmd/agent-lsp/). Clear boundaries between encoding layer, helper
+       integration, and tool migration.
+
+    2. Investigation-first items: None. Architecture is fully documented in docs/gcf-integration.md.
+       All tool handlers follow the same json.Marshal pattern. No unknowns.
+
+    3. Interface discoverability: Yes. The encodeResult helper signature and gcf.Encode wrapper
+       can be fully defined before implementation. Format negotiation through toolDeps is
+       straightforward.
+
+    4. Pre-implementation status: gcf-go dependency is NOT yet in go.mod (contrary to feature
+       description). This is a Wave 1 concern. No existing GCF code in the repo.
+
+    5. Parallelization value: High. Wave 2 has 4 independent agents each migrating different
+       tool files. Build+test cycle is ~30s (go test ./internal/... ./cmd/...). Each agent
+       touches 2-5 files.
+
+    Estimated times:
+    - Scout phase: ~10 min
+    - Agent execution: ~8 min (2 waves; Wave 1: 2 agents ~5 min; Wave 2: 4 agents ~5 min parallel)
+    - Merge and verification: ~4 min
+    Total Polywave time: ~22 min
+
+    Sequential baseline: ~40 min (6 agents x ~7 min avg)
+    Time savings: ~18 min (45% faster)
+
+    Recommendation: Clear speedup. Six agents with non-trivial logic, independent file
+    ownership in Wave 2, and a meaningful build/test cycle.
+test_command: GOWORK=off go test ./internal/... ./cmd/...
+lint_command: go vet ./...
+file_ownership:
+    - file: go.mod
+      agent: A
+      wave: 1
+      action: modify
+    - file: go.sum
+      agent: A
+      wave: 1
+      action: modify
+    - file: internal/encoding/gcf/encode.go
+      agent: A
+      wave: 1
+      action: new
+    - file: internal/encoding/gcf/encode_test.go
+      agent: A
+      wave: 1
+      action: new
+    - file: internal/tools/helpers.go
+      agent: B
+      wave: 1
+      action: modify
+    - file: internal/tools/helpers_test.go
+      agent: B
+      wave: 1
+      action: new
+    - file: cmd/agent-lsp/server.go
+      agent: B
+      wave: 1
+      action: modify
+    - file: internal/tools/change_impact.go
+      agent: C
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+        - B
+    - file: internal/tools/change_impact_test.go
+      agent: C
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+        - B
+    - file: internal/tools/navigation.go
+      agent: D
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+        - B
+    - file: internal/tools/analysis.go
+      agent: D
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+        - B
+    - file: internal/tools/symbol_path.go
+      agent: D
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+        - B
+    - file: internal/tools/coverage_round3_test.go
+      agent: D
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+        - B
+    - file: internal/tools/callhierarchy.go
+      agent: E
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+        - B
+    - file: internal/tools/cross_repo.go
+      agent: E
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+        - B
+    - file: internal/tools/explore.go
+      agent: F
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+        - B
+    - file: internal/tools/explore_test.go
+      agent: F
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+        - B
+interface_contracts:
+    - name: gcf.Encode
+      description: Wraps gcf-go EncodeGeneric for tabular encoding of tool response data
+      definition: |
+        // internal/encoding/gcf/encode.go
+        package gcf
+
+        import gcfgo "github.com/blackwell-systems/gcf-go"
+
+        // Encode converts any structured data to GCF tabular format string.
+        // Falls back gracefully: returns error if data cannot be encoded.
+        func Encode(data any) (string, error) {
+            return gcfgo.EncodeGeneric(data)
+        }
+      location: internal/encoding/gcf/encode.go
+    - name: encodeResult
+      description: Format-aware encoding helper that switches between JSON and GCF based on context
+      definition: |
+        // internal/tools/helpers.go
+
+        // outputFormatKey is a context key for the output format preference.
+        type outputFormatKey struct{}
+
+        // ContextWithOutputFormat returns a new context with the output format set.
+        func ContextWithOutputFormat(ctx context.Context, format string) context.Context {
+            return context.WithValue(ctx, outputFormatKey{}, format)
+        }
+
+        // OutputFormatFromContext returns the output format from context, defaulting to "json".
+        func OutputFormatFromContext(ctx context.Context) string {
+            if v, ok := ctx.Value(outputFormatKey{}).(string); ok && v != "" {
+                return v
+            }
+            return "json"
+        }
+
+        // EncodeResult marshals data as JSON or GCF based on the output format in ctx.
+        // Falls back to JSON if GCF encoding fails.
+        func EncodeResult(ctx context.Context, data any) (types.ToolResult, error) {
+            format := OutputFormatFromContext(ctx)
+            switch format {
+            case "gcf":
+                encoded, err := gcf.Encode(data)
+                if err != nil {
+                    raw, _ := json.Marshal(data)
+                    return types.TextResult(string(raw)), nil
+                }
+                return types.TextResult(encoded), nil
+            default:
+                raw, err := json.Marshal(data)
+                if err != nil {
+                    return types.ErrorResult(err.Error()), nil
+                }
+                return types.TextResult(string(raw)), nil
+            }
+        }
+      location: internal/tools/helpers.go
+    - name: toolDeps.outputFormat
+      description: New field on toolDeps to carry the session output format preference
+      definition: |
+        // cmd/agent-lsp/server.go
+        // Add to toolDeps struct:
+        type toolDeps struct {
+            // ... existing fields ...
+            outputFormat string // "json" (default) or "gcf"
+        }
+      location: cmd/agent-lsp/server.go
+waves:
+    - number: 1
+      agents:
+        - id: A
+          task: |
+            ## What to implement
+
+            Create the `internal/encoding/gcf/` package and add the gcf-go dependency.
+
+            ### 1. Add gcf-go dependency
+
+            Run `go get github.com/blackwell-systems/gcf-go@v0.1.1` to add the dependency
+            to go.mod and go.sum. If v0.1.1 is not available, use the latest available tag.
+
+            ### 2. Create internal/encoding/gcf/encode.go
+
+            Create a new file `internal/encoding/gcf/encode.go` with package `gcf`:
+
+            ```go
+            package gcf
+
+            import gcfgo "github.com/blackwell-systems/gcf-go"
+
+            // Encode converts structured data to GCF tabular format.
+            // Uses gcf-go's EncodeGeneric which handles arbitrary Go values
+            // via reflection, producing pipe-delimited tabular output with
+            // field declaration headers.
+            func Encode(data any) (string, error) {
+                return gcfgo.EncodeGeneric(data)
+            }
+            ```
+
+            If `EncodeGeneric` does not exist in the gcf-go API, check the package
+            documentation for the correct function name. The function should accept
+            `any` and return a GCF-encoded string.
+
+            ### 3. Create internal/encoding/gcf/encode_test.go
+
+            Write tests that verify:
+            - Encoding a slice of structs produces valid GCF tabular output
+            - Encoding a map with nested slices produces valid output
+            - Encoding nil returns empty/error gracefully
+            - Round-trip: encode a struct slice, verify the output contains
+              the expected field names and pipe-separated values
+            - Test with types representative of agent-lsp tool responses:
+              a struct with Name, File, Line fields (like symbolRef)
+
+            ### Interfaces
+
+            ```go
+            func Encode(data any) (string, error)
+            ```
+
+            ### Constraints
+            - Do NOT modify any files outside your ownership list (go.mod, go.sum,
+              internal/encoding/gcf/encode.go, internal/encoding/gcf/encode_test.go)
+            - Do NOT add session-level GCF state; that is a future feature
+            - Do NOT import internal/types or any other agent-lsp package;
+              this package must only depend on gcf-go
+
+            ### Verification
+            ```bash
+            go build ./internal/encoding/gcf/...
+            go test ./internal/encoding/gcf/...
+            go vet ./internal/encoding/gcf/...
+            ```
+
+            ### Postconditions
+            ```bash
+            # gcf-go dependency is in go.mod
+            grep -c "blackwell-systems/gcf-go" go.mod
+            # Expected: 1
+
+            # Encode function exists
+            grep -c "func Encode" internal/encoding/gcf/encode.go
+            # Expected: 1
+            ```
+          files:
+            - go.mod
+            - go.sum
+            - internal/encoding/gcf/encode.go
+            - internal/encoding/gcf/encode_test.go
+        - id: B
+          task: |
+            ## What to implement
+
+            Add the output format threading infrastructure: context helpers in
+            helpers.go and the outputFormat field on toolDeps in server.go.
+
+            ### 1. Add format context helpers to internal/tools/helpers.go
+
+            Add these functions after the existing `appendHint` function (the last
+            function in the file, ending at the closing brace around line 132):
+
+            ```go
+            // outputFormatKey is a context key for output format preference.
+            type outputFormatKey struct{}
+
+            // ContextWithOutputFormat returns a context carrying the output format.
+            func ContextWithOutputFormat(ctx context.Context, format string) context.Context {
+                return context.WithValue(ctx, outputFormatKey{}, format)
+            }
+
+            // OutputFormatFromContext returns the output format from context.
+            // Returns "json" if no format is set.
+            func OutputFormatFromContext(ctx context.Context) string {
+                if v, ok := ctx.Value(outputFormatKey{}).(string); ok && v != "" {
+                    return v
+                }
+                return "json"
+            }
+
+            // EncodeResult marshals data as JSON or GCF based on context format.
+            // Falls back to JSON if GCF encoding fails or format is unrecognized.
+            func EncodeResult(ctx context.Context, data any) (types.ToolResult, error) {
+                format := OutputFormatFromContext(ctx)
+                switch format {
+                case "gcf":
+                    encoded, err := gcf.Encode(data)
+                    if err != nil {
+                        // Fall back to JSON on GCF encoding failure
+                        raw, _ := json.Marshal(data)
+                        return types.TextResult(string(raw)), nil
+                    }
+                    return types.TextResult(encoded), nil
+                default:
+                    raw, err := json.Marshal(data)
+                    if err != nil {
+                        return types.ErrorResult(err.Error()), nil
+                    }
+                    return types.TextResult(string(raw)), nil
+                }
+            }
+            ```
+
+            Add the required imports to the existing import block. The file currently
+            imports:
+
+            ```go
+            import (
+                "context"
+                "errors"
+                "fmt"
+                "os"
+                "path/filepath"
+                "strings"
+
+                "github.com/blackwell-systems/agent-lsp/internal/lsp"
+                "github.com/blackwell-systems/agent-lsp/internal/types"
+                uriPkg "github.com/blackwell-systems/agent-lsp/internal/uri"
+            )
+            ```
+
+            Add `"encoding/json"` and `gcf "github.com/blackwell-systems/agent-lsp/internal/encoding/gcf"`
+            to the import block.
+
+            ### 2. Create internal/tools/helpers_test.go
+
+            Test the context helpers and EncodeResult:
+            - OutputFormatFromContext returns "json" for empty context
+            - OutputFormatFromContext returns "gcf" when set
+            - EncodeResult with JSON format produces valid JSON
+            - EncodeResult with GCF format produces non-empty output (exact format
+              depends on gcf-go, so test for non-empty and non-JSON)
+            - EncodeResult with unknown format falls back to JSON
+            - EncodeResult GCF fallback: if Encode returns error, result is valid JSON
+
+            ### 3. Add outputFormat field to toolDeps in cmd/agent-lsp/server.go
+
+            In the `toolDeps` struct (around line 276), add a new field.
+
+            Insert after this exact text:
+            ```go
+            	notifyHub                 *notify.Hub
+            ```
+
+            Add:
+            ```go
+            	outputFormat              string // "json" (default) or "gcf"; set from MCP capabilities
+            ```
+
+            Then in the `Run` function where `deps` is constructed (around line 348),
+            add `outputFormat: "json"` to the struct literal. Insert after this exact text:
+            ```go
+            		notifyHub:                 notifyHub,
+            ```
+
+            Add:
+            ```go
+            		outputFormat:              "json",
+            ```
+
+            ### Interfaces
+
+            Implements the `encodeResult` and context helper contracts defined in
+            interface_contracts above.
+
+            ### Constraints
+            - Do NOT modify any tool handler files (change_impact.go, navigation.go, etc.)
+            - Do NOT implement MCP capability negotiation for format; just add the field
+              with default "json". Capability negotiation is a future task.
+            - Do NOT create the internal/encoding/gcf package; Agent A does that.
+              Your import of it will compile after merge.
+            - Do NOT add GCF session state to session package
+
+            ### Verification
+            ```bash
+            go build ./internal/tools/...
+            go test ./internal/tools/... -run TestEncodeResult -run TestOutputFormat
+            go build ./cmd/agent-lsp/...
+            go vet ./internal/tools/... ./cmd/agent-lsp/...
+            ```
+
+            ### Postconditions
+            ```bash
+            # EncodeResult function exists in helpers.go
+            grep -c "func EncodeResult" internal/tools/helpers.go
+            # Expected: 1
+
+            # outputFormat field exists in server.go
+            grep -c "outputFormat" cmd/agent-lsp/server.go
+            # Expected: 2 (field declaration + initialization)
+
+            # Context helpers exist
+            grep -c "ContextWithOutputFormat\|OutputFormatFromContext" internal/tools/helpers.go
+            # Expected: 2
+            ```
+          files:
+            - internal/tools/helpers.go
+            - internal/tools/helpers_test.go
+            - cmd/agent-lsp/server.go
+    - number: 2
+      agents:
+        - id: C
+          task: |
+            ## What to implement
+
+            Migrate blast_radius (HandleGetChangeImpact in change_impact.go) to use
+            EncodeResult instead of json.Marshal for its final response serialization.
+
+            ### 1. Modify internal/tools/change_impact.go
+
+            Find the json.Marshal call that serializes the final response in
+            HandleGetChangeImpact. The pattern is:
+
+            ```go
+            data, err := json.Marshal(response)
+            if err != nil {
+                return types.ErrorResult(...), nil
+            }
+            return types.TextResult(string(data)), nil
+            ```
+
+            Replace it with:
+
+            ```go
+            return EncodeResult(ctx, response)
+            ```
+
+            The `ctx` parameter is already available in HandleGetChangeImpact's signature.
+            Remove the `"encoding/json"` import if it becomes unused (check for other
+            json.Marshal calls in the same file first; there may be intermediate
+            marshaling that should remain as JSON).
+
+            ### 2. Add GCF encoding test to change_impact_test.go
+
+            Add a test that:
+            - Creates a context with GCF format: `tools.ContextWithOutputFormat(ctx, "gcf")`
+            - Calls EncodeResult with a representative blast_radius response struct
+            - Verifies the output is non-empty and differs from JSON encoding
+            - Verifies JSON format still works (regression test)
+
+            ### Constraints
+            - Do NOT modify intermediate json.Marshal calls used for sub-structures
+              (e.g., serializing individual symbol data within the handler). Only replace
+              the final response serialization.
+            - Do NOT modify files outside your ownership list
+            - Do NOT change the function signatures of HandleGetChangeImpact
+
+            ### Verification
+            ```bash
+            go build ./internal/tools/...
+            go test ./internal/tools/... -run TestChangeImpact -run TestBlastRadius
+            go vet ./internal/tools/...
+            ```
+
+            ### Postconditions
+            ```bash
+            # EncodeResult is called in change_impact.go
+            grep -c "EncodeResult" internal/tools/change_impact.go
+            # Expected: >= 1
+
+            # File still compiles
+            go build ./internal/tools/...
+            ```
+          files:
+            - internal/tools/change_impact.go
+            - internal/tools/change_impact_test.go
+          dependencies:
+            - A
+            - B
+        - id: D
+          task: |
+            ## What to implement
+
+            Migrate find_references (navigation.go) and list_symbols (analysis.go) to
+            use EncodeResult for final response serialization. Also update cascade
+            callers of locationsResult in symbol_path.go and coverage_round3_test.go.
+
+            ### 1. Modify internal/tools/navigation.go
+
+            The `locationsResult` function (around line 44) currently does:
+
+            ```go
+            func locationsResult(locs []types.Location) (types.ToolResult, error) {
+                formatted, err := formatLocations(locs)
+                if err != nil {
+                    return types.ErrorResult(fmt.Sprintf("formatting locations: %s", err)), nil
+                }
+                data, mErr := json.Marshal(formatted)
+                if mErr != nil {
+                    return types.ErrorResult(fmt.Sprintf("marshaling locations: %s", mErr)), nil
+                }
+                return types.TextResult(string(data)), nil
+            }
+            ```
+
+            Add `ctx context.Context` as the first parameter and replace the
+            json.Marshal + TextResult with EncodeResult:
+
+            ```go
+            func locationsResult(ctx context.Context, locs []types.Location) (types.ToolResult, error) {
+                formatted, err := formatLocations(locs)
+                if err != nil {
+                    return types.ErrorResult(fmt.Sprintf("formatting locations: %s", err)), nil
+                }
+                return EncodeResult(ctx, formatted)
+            }
+            ```
+
+            Then update ALL callers of `locationsResult` in navigation.go to pass `ctx`.
+            The callers in navigation.go are:
+            - Line 98: `res, err := locationsResult(locs)` in HandleGoToDefinition
+            - Line 145: `res, err := locationsResult(locs)` in HandleGoToTypeDefinition
+            - Line 180: `return locationsResult(locs)` in HandleGoToImplementation
+            - Line 211: `res, err := locationsResult(locs)` in HandleGoToDeclaration
+            - Line 246: `return locationsResult(locs)` in HandleGetReferences
+
+            All of these handlers already have `ctx context.Context` in their signatures.
+            Add `ctx` as the first argument to each call.
+
+            ### 2. Modify internal/tools/symbol_path.go
+
+            The file has a caller at line 69:
+            ```go
+            res, err := locationsResult(locs)
+            ```
+
+            Update to pass `ctx`:
+            ```go
+            res, err := locationsResult(ctx, locs)
+            ```
+
+            The enclosing function already has `ctx context.Context` in its signature.
+
+            ### 3. Modify internal/tools/coverage_round3_test.go
+
+            The file has two callers around lines 272 and 285:
+            ```go
+            result, err := locationsResult(nil)
+            result, err := locationsResult(locs)
+            ```
+
+            Update both to pass `context.Background()`:
+            ```go
+            result, err := locationsResult(context.Background(), nil)
+            result, err := locationsResult(context.Background(), locs)
+            ```
+
+            Add `"context"` to the import block if not already present.
+
+            ### 4. Modify internal/tools/analysis.go
+
+            Find HandleListSymbols. It builds a response and marshals it with json.Marshal.
+            Replace the final json.Marshal + TextResult pattern with:
+
+            ```go
+            return EncodeResult(ctx, response)
+            ```
+
+            Also find HandleFindReferences in analysis.go if it calls `locationsResult(...)`.
+            Update the call to pass `ctx`: `locationsResult(ctx, ...)`.
+
+            ### Constraints
+            - Do NOT modify HandleGetDiagnostics, HandleInspectSymbol, or other handlers
+              in analysis.go; only HandleListSymbols and HandleFindReferences
+            - Do NOT change function signatures of Handle* functions (they already take ctx)
+            - Do NOT modify files outside your ownership list
+
+            ### Verification
+            ```bash
+            go build ./internal/tools/...
+            go test ./internal/tools/... -run TestLocationsResult -run TestListSymbols -run TestFindRef -run TestGoToSymbol
+            go vet ./internal/tools/...
+            ```
+
+            ### Postconditions
+            ```bash
+            # EncodeResult is used in navigation.go
+            grep -c "EncodeResult" internal/tools/navigation.go
+            # Expected: >= 1
+
+            # EncodeResult is used in analysis.go
+            grep -c "EncodeResult" internal/tools/analysis.go
+            # Expected: >= 1
+
+            # locationsResult takes ctx parameter
+            grep "func locationsResult(ctx" internal/tools/navigation.go
+            # Expected: 1 match
+
+            # symbol_path.go passes ctx to locationsResult
+            grep "locationsResult(ctx" internal/tools/symbol_path.go
+            # Expected: 1 match
+            ```
+          files:
+            - internal/tools/navigation.go
+            - internal/tools/analysis.go
+            - internal/tools/symbol_path.go
+            - internal/tools/coverage_round3_test.go
+          dependencies:
+            - A
+            - B
+        - id: E
+          task: |
+            ## What to implement
+
+            Migrate find_callers/call_hierarchy (callhierarchy.go) and cross_repo
+            (cross_repo.go) to use EncodeResult for final response serialization.
+
+            ### 1. Modify internal/tools/callhierarchy.go
+
+            Find HandleCallHierarchy. It builds a `callHierarchyResult` struct and
+            serializes it with json.Marshal at the end. Replace the final
+            json.Marshal + TextResult with:
+
+            ```go
+            return EncodeResult(ctx, result)
+            ```
+
+            The `ctx` parameter is already in HandleCallHierarchy's signature.
+
+            Remove the `"encoding/json"` import if it becomes unused after
+            this change. Check for other json.Marshal calls in the file first.
+
+            ### 2. Modify internal/tools/cross_repo.go
+
+            Find HandleGetCrossRepoReferences. It builds a response map and serializes
+            with json.Marshal. Replace the final json.Marshal + TextResult with:
+
+            ```go
+            return EncodeResult(ctx, response)
+            ```
+
+            Remove the `"encoding/json"` import if it becomes unused after
+            this change. Check for other json.Marshal calls in the file first.
+
+            ### Constraints
+            - Do NOT modify the concurrent caller detection logic in callhierarchy.go
+            - Do NOT modify the repoForFile or normalizePathForCompare helpers in cross_repo.go
+            - Do NOT modify files outside your ownership list
+            - Only replace the FINAL response serialization, not intermediate marshaling
+
+            ### Verification
+            ```bash
+            go build ./internal/tools/...
+            go test ./internal/tools/... -run TestCallHierarchy -run TestCrossRepo
+            go vet ./internal/tools/...
+            ```
+
+            ### Postconditions
+            ```bash
+            # EncodeResult is used in callhierarchy.go
+            grep -c "EncodeResult" internal/tools/callhierarchy.go
+            # Expected: >= 1
+
+            # EncodeResult is used in cross_repo.go
+            grep -c "EncodeResult" internal/tools/cross_repo.go
+            # Expected: >= 1
+            ```
+          files:
+            - internal/tools/callhierarchy.go
+            - internal/tools/cross_repo.go
+          dependencies:
+            - A
+            - B
+        - id: F
+          task: |
+            ## What to implement
+
+            Migrate explore_symbol (explore.go) to use EncodeResult for final response
+            serialization, and add a GCF-specific integration test.
+
+            ### 1. Modify internal/tools/explore.go
+
+            Find HandleExploreSymbol. It builds an `exploreResult` struct and serializes
+            with json.Marshal. Replace the final json.Marshal + TextResult with:
+
+            ```go
+            return EncodeResult(ctx, result)
+            ```
+
+            The `ctx` parameter is already in HandleExploreSymbol's signature.
+
+            Remove the `"encoding/json"` import if it becomes unused after
+            this change. Check for other json.Marshal calls in the file first.
+
+            ### 2. Add GCF integration test to explore_test.go
+
+            Add a test that exercises EncodeResult with a representative exploreResult
+            struct in both JSON and GCF modes:
+
+            - Create an exploreResult with populated fields (TypeInfo, Callers, References)
+            - Test with default context (should produce JSON)
+            - Test with GCF context: `tools.ContextWithOutputFormat(ctx, "gcf")`
+            - Verify JSON output can be unmarshaled back to exploreResult
+            - Verify GCF output is non-empty and differs from JSON output
+
+            ### Constraints
+            - Do NOT modify the exploreResult struct definition or its field types
+            - Do NOT modify HandleExploreSymbol's function signature
+            - Do NOT modify files outside your ownership list
+
+            ### Verification
+            ```bash
+            go build ./internal/tools/...
+            go test ./internal/tools/... -run TestExplore -run TestGCF
+            go vet ./internal/tools/...
+            ```
+
+            ### Postconditions
+            ```bash
+            # EncodeResult is used in explore.go
+            grep -c "EncodeResult" internal/tools/explore.go
+            # Expected: >= 1
+
+            # Test file has GCF test
+            grep -c "gcf\|GCF" internal/tools/explore_test.go
+            # Expected: >= 1
+            ```
+          files:
+            - internal/tools/explore.go
+            - internal/tools/explore_test.go
+          dependencies:
+            - A
+            - B
+quality_gates:
+    level: standard
+    gates:
+        - type: build
+          command: go build ./...
+          required: true
+        - type: lint
+          command: go vet ./...
+          required: true
+        - type: test
+          command: GOWORK=off go test ./internal/... ./cmd/...
+          required: true
+scaffolds:
+    - file_path: internal/encoding/gcf/encode.go
+      contents: |
+        package gcf
+
+        // Encode converts a tool response to GCF tabular format.
+        // Stub: returns empty string and nil error.
+        func Encode(data any) (string, error) {
+            return "", nil
+        }
+      status: pending
+pre_mortem:
+    overall_risk: medium
+    rows:
+        - scenario: gcf-go EncodeGeneric does not handle nested structs with omitempty tags correctly
+          likelihood: medium
+          impact: medium
+          mitigation: |
+            Agent A's tests verify encoding with nested structs. GCF fallback to JSON
+            in EncodeResult ensures no data loss even if encoding fails.
+        - scenario: Agent B's helpers.go import of internal/encoding/gcf fails to compile in isolation (Agent A not merged yet)
+          likelihood: high
+          impact: low
+          mitigation: |
+            This is expected in worktree isolation. Agent B can stub the import or
+            the scaffold provides a compilable stub. Both agents are in Wave 1 and
+            merge before Wave 2 starts.
+        - scenario: locationsResult signature change breaks callers in symbol_path.go or coverage_round3_test.go
+          likelihood: low
+          impact: low
+          mitigation: |
+            Both cascade files (symbol_path.go, coverage_round3_test.go) are assigned
+            to Agent D alongside navigation.go. Agent D updates all callers in one pass.
+        - scenario: Removing json import from tool files that still use json.Marshal for intermediate serialization
+          likelihood: medium
+          impact: low
+          mitigation: |
+            Agent task prompts explicitly warn to check for other json.Marshal calls
+            before removing the import. go build will catch any mistake immediately.
+        - scenario: gcf-go v0.1.1 tag does not exist or API differs from docs
+          likelihood: low
+          impact: high
+          mitigation: |
+            Agent A should try v0.1.1 first, fall back to v0.1.0 or latest. The
+            Encode wrapper isolates the rest of the codebase from API changes.
+state: SCOUT_PENDING
+injection_method: hook
