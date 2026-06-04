@@ -13,7 +13,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/blackwell-systems/agent-lsp/internal/lsp"
@@ -41,16 +40,12 @@ func formatLocations(locs []types.Location) ([]types.FormattedLocation, error) {
 }
 
 // locationsResult marshals formatted locations into a ToolResult.
-func locationsResult(locs []types.Location) (types.ToolResult, error) {
+func locationsResult(ctx context.Context, locs []types.Location) (types.ToolResult, error) {
 	formatted, err := formatLocations(locs)
 	if err != nil {
 		return types.ErrorResult(fmt.Sprintf("formatting locations: %s", err)), nil
 	}
-	data, mErr := json.Marshal(formatted)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling locations: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, formatted)
 }
 
 // HandleGetReferences retrieves all references to the symbol at the given location.
@@ -95,7 +90,7 @@ func HandleGetReferences(ctx context.Context, client *lsp.LSPClient, args map[st
 			return types.ErrorResult(fmt.Sprintf("find_references (fuzzy): %s", wErr)), nil
 		}
 	}
-	res, err := locationsResult(locs)
+	res, err := locationsResult(ctx, locs)
 	if err != nil {
 		return res, err
 	}
@@ -142,7 +137,7 @@ func HandleGoToDefinition(ctx context.Context, client *lsp.LSPClient, args map[s
 			return types.ErrorResult(fmt.Sprintf("go_to_definition (fuzzy): %s", wErr)), nil
 		}
 	}
-	res, err := locationsResult(locs)
+	res, err := locationsResult(ctx, locs)
 	if err != nil {
 		return res, err
 	}
@@ -177,7 +172,7 @@ func HandleGoToTypeDefinition(ctx context.Context, client *lsp.LSPClient, args m
 	if wErr != nil {
 		return types.ErrorResult(fmt.Sprintf("go_to_type_definition: %s", wErr)), nil
 	}
-	return locationsResult(locs)
+	return locationsResult(ctx, locs)
 }
 
 // HandleGoToImplementation finds implementations of the symbol at the given location.
@@ -208,7 +203,7 @@ func HandleGoToImplementation(ctx context.Context, client *lsp.LSPClient, args m
 	if wErr != nil {
 		return types.ErrorResult(fmt.Sprintf("go_to_implementation: %s", wErr)), nil
 	}
-	res, err := locationsResult(locs)
+	res, err := locationsResult(ctx, locs)
 	if err != nil {
 		return res, err
 	}
@@ -243,5 +238,5 @@ func HandleGoToDeclaration(ctx context.Context, client *lsp.LSPClient, args map[
 	if wErr != nil {
 		return types.ErrorResult(fmt.Sprintf("go_to_declaration: %s", wErr)), nil
 	}
-	return locationsResult(locs)
+	return locationsResult(ctx, locs)
 }

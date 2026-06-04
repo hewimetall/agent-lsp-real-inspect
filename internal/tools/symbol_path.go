@@ -66,7 +66,7 @@ func HandleGoToSymbol(ctx context.Context, client *lsp.LSPClient, args map[strin
 
 	goToSymHint := "Use inspect_symbol for type info, or find_references for all usages."
 	if len(locs) > 0 {
-		res, err := locationsResult(locs)
+		res, err := locationsResult(ctx, locs)
 		if err != nil {
 			return res, err
 		}
