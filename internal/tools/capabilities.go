@@ -2,8 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"sort"
 
 	"github.com/blackwell-systems/agent-lsp/internal/lsp"
@@ -142,7 +140,7 @@ func classifySkills(caps map[string]any) []SkillStatus {
 //
 // This lets the AI skip tools that will return empty results and avoid
 // unnecessary LSP round trips for unsupported features.
-func HandleGetServerCapabilities(_ context.Context, client *lsp.LSPClient, _ map[string]any) (types.ToolResult, error) {
+func HandleGetServerCapabilities(ctx context.Context, client *lsp.LSPClient, _ map[string]any) (types.ToolResult, error) {
 	if err := CheckInitialized(client); err != nil {
 		return types.ErrorResult(err.Error()), nil
 	}
@@ -177,11 +175,7 @@ func HandleGetServerCapabilities(_ context.Context, client *lsp.LSPClient, _ map
 		Capabilities:     caps,
 	}
 
-	data, mErr := json.Marshal(result)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling capabilities: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, result)
 }
 
 // hasCapabilityInMap checks whether a capability key is present and truthy

@@ -14,7 +14,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os/exec"
@@ -172,7 +171,7 @@ type DetectResult struct {
 // into the agent-lsp MCP server args.
 //
 // Does not require start_lsp to have been called — the client parameter is unused.
-func HandleDetectLspServers(_ context.Context, _ *lsp.LSPClient, args map[string]any) (types.ToolResult, error) {
+func HandleDetectLspServers(ctx context.Context, _ *lsp.LSPClient, args map[string]any) (types.ToolResult, error) {
 	dir, _ := args["workspace_dir"].(string)
 	if dir == "" {
 		return types.ErrorResult("workspace_dir is required"), nil
@@ -280,11 +279,7 @@ func HandleDetectLspServers(_ context.Context, _ *lsp.LSPClient, args map[string
 		NotInstalled:       notInstalled,
 	}
 
-	data, mErr := json.Marshal(result)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling detect result: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, result)
 }
 
 // buildConfigEntry returns the agent-lsp args string for a server definition.

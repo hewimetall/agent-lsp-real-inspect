@@ -143,6 +143,9 @@ func ContextWithOutputFormat(ctx context.Context, format string) context.Context
 
 // OutputFormatFromContext returns the output format from context, defaulting to "json".
 func OutputFormatFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return "json"
+	}
 	if v, ok := ctx.Value(outputFormatKey{}).(string); ok && v != "" {
 		return v
 	}

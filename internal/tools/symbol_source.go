@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -122,9 +121,6 @@ func HandleGetSymbolSource(ctx context.Context, client *lsp.LSPClient, args map[
 		EndLine:    sym.Range.End.Line + 1,
 		Source:     source,
 	}
-	data, mErr := json.Marshal(result)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling result: %s", mErr)), nil
-	}
-	return AppendTokenMeta(types.TextResult(string(data)), cleanPath), nil
+	encoded, _ := EncodeResult(ctx, result)
+	return AppendTokenMeta(encoded, cleanPath), nil
 }

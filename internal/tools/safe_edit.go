@@ -125,11 +125,8 @@ func HandleSafeApplyEdit(ctx context.Context, client *lsp.LSPClient, sessionMgr 
 	if netDelta > 0 {
 		// Unsafe: return preview result with applied=false.
 		previewJSON["applied"] = false
-		data, mErr := json.Marshal(previewJSON)
-		if mErr != nil {
-			return types.ErrorResult(fmt.Sprintf("marshaling result: %s", mErr)), nil
-		}
-		return appendHint(types.TextResult(string(data)), "Edit would introduce errors. Review diagnostics before applying."), nil
+		encoded, _ := EncodeResult(ctx, previewJSON)
+		return appendHint(encoded, "Edit would introduce errors. Review diagnostics before applying."), nil
 	}
 
 	// Safe: apply the edit.
@@ -148,9 +145,6 @@ func HandleSafeApplyEdit(ctx context.Context, client *lsp.LSPClient, sessionMgr 
 
 	// Build a combined result.
 	previewJSON["applied"] = true
-	data, mErr := json.Marshal(previewJSON)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling result: %s", mErr)), nil
-	}
-	return appendHint(types.TextResult(string(data)), "Edit applied successfully (net_delta == 0)."), nil
+	encoded, _ := EncodeResult(ctx, previewJSON)
+	return appendHint(encoded, "Edit applied successfully (net_delta == 0)."), nil
 }

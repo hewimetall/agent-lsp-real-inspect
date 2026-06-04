@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -143,11 +142,7 @@ func HandleGetSymbolDocumentation(ctx context.Context, args map[string]any) (typ
 			Source:   "error",
 			Error:    fmt.Sprintf("unsupported language: %s", languageID),
 		}
-		data, err := json.Marshal(result)
-		if err != nil {
-			return types.ErrorResult(fmt.Sprintf("marshal error: %v", err)), nil
-		}
-		return types.TextResult(string(data)), nil
+		return EncodeResult(ctx, result)
 	}
 
 	dispatcher, ok := docDispatchers[languageID]
@@ -158,11 +153,7 @@ func HandleGetSymbolDocumentation(ctx context.Context, args map[string]any) (typ
 			Source:   "error",
 			Error:    fmt.Sprintf("unsupported language: %s", languageID),
 		}
-		data, err := json.Marshal(result)
-		if err != nil {
-			return types.ErrorResult(fmt.Sprintf("marshal error: %v", err)), nil
-		}
-		return types.TextResult(string(data)), nil
+		return EncodeResult(ctx, result)
 	}
 
 	// Build command args
@@ -211,11 +202,7 @@ func HandleGetSymbolDocumentation(ctx context.Context, args map[string]any) (typ
 		if result.Error == "" {
 			result.Error = execErr.Error()
 		}
-		data, err := json.Marshal(result)
-		if err != nil {
-			return types.ErrorResult(fmt.Sprintf("marshal error: %v", err)), nil
-		}
-		return types.TextResult(string(data)), nil
+		return EncodeResult(ctx, result)
 	}
 
 	sig := extractSignature(languageID, rawStr)
@@ -234,9 +221,5 @@ func HandleGetSymbolDocumentation(ctx context.Context, args map[string]any) (typ
 		Signature: formattedSig,
 	}
 
-	data, err := json.Marshal(result)
-	if err != nil {
-		return types.ErrorResult(fmt.Sprintf("marshal error: %v", err)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, result)
 }

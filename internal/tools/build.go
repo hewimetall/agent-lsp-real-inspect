@@ -62,15 +62,12 @@ func HandleRunBuild(ctx context.Context, args map[string]any) (types.ToolResult,
 		return types.ErrorResult(fmt.Sprintf("run_build: %s", err)), nil
 	}
 
-	data, mErr := json.Marshal(result)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling build result: %s", mErr)), nil
-	}
 	buildHint := "Build clean. Use run_tests to verify test suite."
 	if !result.Success {
 		buildHint = "Fix build errors before proceeding."
 	}
-	return appendHint(types.TextResult(string(data)), buildHint), nil
+	encoded, _ := EncodeResult(ctx, result)
+	return appendHint(encoded, buildHint), nil
 }
 
 // HandleRunTests is an MCP tool handler for run_tests. It runs the language's
@@ -105,15 +102,12 @@ func HandleRunTests(ctx context.Context, args map[string]any) (types.ToolResult,
 		return types.ErrorResult(fmt.Sprintf("run_tests: %s", err)), nil
 	}
 
-	data, mErr := json.Marshal(result)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling test result: %s", mErr)), nil
-	}
 	testHint := "All tests pass. Safe to commit."
 	if !result.Passed {
 		testHint = "Fix failing tests before committing."
 	}
-	return appendHint(types.TextResult(string(data)), testHint), nil
+	encoded, _ := EncodeResult(ctx, result)
+	return appendHint(encoded, testHint), nil
 }
 
 // HandleGetTestsForFile is an MCP tool handler for get_tests_for_file.
@@ -135,11 +129,7 @@ func HandleGetTestsForFile(ctx context.Context, args map[string]any) (types.Tool
 		return types.ErrorResult(fmt.Sprintf("find_test_files: %s", err)), nil
 	}
 
-	data, mErr := json.Marshal(result)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling test file result: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, result)
 }
 
 // RunBuild executes the language's build command in the given root directory

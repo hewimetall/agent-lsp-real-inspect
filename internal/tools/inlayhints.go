@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/blackwell-systems/agent-lsp/internal/lsp"
@@ -43,9 +42,5 @@ func HandleGetInlayHints(ctx context.Context, client *lsp.LSPClient, args map[st
 		return types.ErrorResult(fmt.Sprintf("get_inlay_hints: %s", wErr)), nil
 	}
 
-	data, mErr := json.Marshal(hints)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling inlay hints: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, hints)
 }

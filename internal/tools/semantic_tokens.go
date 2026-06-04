@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/blackwell-systems/agent-lsp/internal/lsp"
@@ -44,9 +43,5 @@ func HandleGetSemanticTokens(ctx context.Context, client *lsp.LSPClient, args ma
 		return types.TextResult("No semantic tokens found in the specified range. The language server may not support semantic tokens, or there are no tokens in this range."), nil
 	}
 
-	data, mErr := json.Marshal(tokens)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling semantic tokens: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, tokens)
 }

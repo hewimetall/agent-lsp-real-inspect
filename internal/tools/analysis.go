@@ -15,7 +15,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -74,22 +73,14 @@ func HandleGetDiagnostics(ctx context.Context, client *lsp.LSPClient, args map[s
 	if groupBy == "symbol" && filePath != "" {
 		result, gErr := groupDiagnosticsBySymbol(ctx, client, filePath, diagMap)
 		if gErr == nil {
-			data, err := json.Marshal(result)
-			if err != nil {
-				return types.ErrorResult(fmt.Sprintf("marshaling diagnostics: %s", err)), nil
-			}
 			hint := "No errors. Safe to proceed."
 			if len(result.Symbols) > 0 || len(result.Ungrouped) > 0 {
 				hint = "Use suggest_fixes at each error location for quick fixes."
 			}
-			return appendHint(types.TextResult(string(data)), hint), nil
+			encoded, _ := EncodeResult(ctx, result)
+			return appendHint(encoded, hint), nil
 		}
 		// Fall through to ungrouped if symbol grouping fails.
-	}
-
-	data, err := json.Marshal(diagMap)
-	if err != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling diagnostics: %s", err)), nil
 	}
 
 	hasErrors := false
@@ -103,7 +94,8 @@ func HandleGetDiagnostics(ctx context.Context, client *lsp.LSPClient, args map[s
 	if hasErrors {
 		hint = "Use suggest_fixes at each error location for quick fixes."
 	}
-	return appendHint(types.TextResult(string(data)), hint), nil
+	encoded, _ := EncodeResult(ctx, diagMap)
+	return appendHint(encoded, hint), nil
 }
 
 // symbolDiagGroup groups diagnostics under a named symbol.
@@ -261,11 +253,7 @@ func HandleGetCompletions(ctx context.Context, client *lsp.LSPClient, args map[s
 		return types.ErrorResult(fmt.Sprintf("get_completions: %s", wErr)), nil
 	}
 
-	data, mErr := json.Marshal(result)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling completions: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, result)
 }
 
 // HandleGetSignatureHelp retrieves signature help at a source location.
@@ -297,11 +285,7 @@ func HandleGetSignatureHelp(ctx context.Context, client *lsp.LSPClient, args map
 		return types.ErrorResult(fmt.Sprintf("get_signature_help: %s", wErr)), nil
 	}
 
-	data, mErr := json.Marshal(result)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling signature help: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, result)
 }
 
 // HandleGetCodeActions retrieves code actions for a range in a document.
@@ -332,11 +316,8 @@ func HandleGetCodeActions(ctx context.Context, client *lsp.LSPClient, args map[s
 		return types.ErrorResult(fmt.Sprintf("suggest_fixes: %s", wErr)), nil
 	}
 
-	data, mErr := json.Marshal(result)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling code actions: %s", mErr)), nil
-	}
-	return appendHint(types.TextResult(string(data)), "Use execute_command to apply a code action."), nil
+	encoded, _ := EncodeResult(ctx, result)
+	return appendHint(encoded, "Use execute_command to apply a code action."), nil
 }
 
 // HandleGetDocumentSymbols retrieves the symbols defined in a document.
@@ -437,11 +418,8 @@ func HandleGetWorkspaceSymbols(ctx context.Context, client *lsp.LSPClient, args 
 
 	wsSymHint := "Use inspect_symbol on a symbol for type details."
 	if detailLevel == "basic" || detailLevel == "" {
-		data, mErr := json.Marshal(symbols)
-		if mErr != nil {
-			return types.ErrorResult(fmt.Sprintf("marshaling workspace symbols: %s", mErr)), nil
-		}
-		return appendHint(types.TextResult(string(data)), wsSymHint), nil
+		encoded, _ := EncodeResult(ctx, symbols)
+		return appendHint(encoded, wsSymHint), nil
 	}
 
 	// Enrich the offset..offset+limit window with hover info.
@@ -473,11 +451,8 @@ func HandleGetWorkspaceSymbols(ctx context.Context, client *lsp.LSPClient, args 
 		resp.Enriched = enriched
 	}
 
-	data, mErr := json.Marshal(resp)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling workspace symbols: %s", mErr)), nil
-	}
-	return appendHint(types.TextResult(string(data)), wsSymHint), nil
+	encoded, _ := EncodeResult(ctx, resp)
+	return appendHint(encoded, wsSymHint), nil
 }
 
 // toIntOpt reads an integer argument without error — returns (value, true) if present and valid.

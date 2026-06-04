@@ -81,17 +81,11 @@ func HandleRenameSymbol(ctx context.Context, client *lsp.LSPClient, args map[str
 		}
 		env := previewEnvelope{WorkspaceEdit: result}
 		env.Preview.Note = "dry_run=true: inspect workspace_edit and call apply_edit to commit"
-		data, mErr := json.Marshal(env)
-		if mErr != nil {
-			return types.ErrorResult(fmt.Sprintf("marshaling dry_run result: %s", mErr)), nil
-		}
-		return appendHint(types.TextResult(string(data)), "Review the workspace edit, then call rename_symbol without dry_run to apply."), nil
+		encoded, _ := EncodeResult(ctx, env)
+		return appendHint(encoded, "Review the workspace edit, then call rename_symbol without dry_run to apply."), nil
 	}
-	data, mErr := json.Marshal(result)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling rename result: %s", mErr)), nil
-	}
-	return appendHint(types.TextResult(string(data)), "Use get_diagnostics to verify the rename didn't introduce errors."), nil
+	encoded, _ := EncodeResult(ctx, result)
+	return appendHint(encoded, "Use get_diagnostics to verify the rename didn't introduce errors."), nil
 }
 
 // renameWithFuzzyFallback retries rename using workspace symbol candidates when the
@@ -267,11 +261,7 @@ func HandlePrepareRename(ctx context.Context, client *lsp.LSPClient, args map[st
 		return types.ErrorResult(fmt.Sprintf("prepare_rename: %s", wErr)), nil
 	}
 
-	data, mErr := json.Marshal(result)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling prepare_rename result: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, result)
 }
 
 // HandleFormatDocument formats an entire document.
@@ -309,11 +299,7 @@ func HandleFormatDocument(ctx context.Context, client *lsp.LSPClient, args map[s
 		return types.ErrorResult(fmt.Sprintf("format_document: %s", wErr)), nil
 	}
 
-	data, mErr := json.Marshal(result)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling format result: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, result)
 }
 
 // HandleFormatRange formats a range within a document.
@@ -356,11 +342,7 @@ func HandleFormatRange(ctx context.Context, client *lsp.LSPClient, args map[stri
 		return types.ErrorResult(fmt.Sprintf("format_range: %s", wErr)), nil
 	}
 
-	data, mErr := json.Marshal(result)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling format_range result: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, result)
 }
 
 // HandleApplyEdit applies a workspace edit.
@@ -536,9 +518,5 @@ func HandleExecuteCommand(ctx context.Context, client *lsp.LSPClient, args map[s
 		return types.ErrorResult(fmt.Sprintf("execute_command: %s", err)), nil
 	}
 
-	data, mErr := json.Marshal(result)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling execute_command result: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, result)
 }

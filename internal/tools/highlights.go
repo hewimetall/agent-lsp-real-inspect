@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/blackwell-systems/agent-lsp/internal/lsp"
@@ -42,9 +41,5 @@ func HandleGetDocumentHighlights(ctx context.Context, client *lsp.LSPClient, arg
 		return types.ErrorResult(fmt.Sprintf("get_document_highlights: %s", wErr)), nil
 	}
 
-	data, mErr := json.Marshal(highlights)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling highlights: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, highlights)
 }

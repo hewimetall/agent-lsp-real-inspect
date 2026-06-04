@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -87,11 +86,8 @@ func HandleGoToSymbol(ctx context.Context, client *lsp.LSPClient, args map[strin
 			EndCol:    best.Location.Range.End.Character + 1,
 		},
 	}
-	data, mErr := json.Marshal(fallback)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling location: %s", mErr)), nil
-	}
-	return appendHint(types.TextResult(string(data)), goToSymHint), nil
+	encoded, _ := EncodeResult(ctx, fallback)
+	return appendHint(encoded, goToSymHint), nil
 }
 
 // bestSymbolMatch picks the best candidate from a list of workspace symbols

@@ -24,7 +24,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/blackwell-systems/agent-lsp/internal/session"
@@ -59,11 +58,7 @@ func HandleCreateSimulationSession(ctx context.Context, mgr *session.SessionMana
 		"session_id": sessionID,
 		"status":     "created",
 	}
-	data, mErr := json.Marshal(result)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling result: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, result)
 }
 
 // HandleSimulateEdit applies a single edit to a session without evaluating.
@@ -98,11 +93,7 @@ func HandleSimulateEdit(ctx context.Context, mgr *session.SessionManager, args m
 		return types.ErrorResult(fmt.Sprintf("simulate_edit failed: %s", err)), nil
 	}
 
-	data, mErr := json.Marshal(editResult)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling result: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, editResult)
 }
 
 // HandleEvaluateSession evaluates the current state of a session.
@@ -130,11 +121,7 @@ func HandleEvaluateSession(ctx context.Context, mgr *session.SessionManager, arg
 		return types.ErrorResult(fmt.Sprintf("evaluate_session failed: %s", err)), nil
 	}
 
-	data, mErr := json.Marshal(evalResult)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling result: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, evalResult)
 }
 
 // HandleSimulateChain applies a sequence of edits and evaluates after each step.
@@ -193,11 +180,7 @@ func HandleSimulateChain(ctx context.Context, mgr *session.SessionManager, args 
 		return types.ErrorResult(fmt.Sprintf("simulate_chain failed: %s", err)), nil
 	}
 
-	data, mErr := json.Marshal(chainResult)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling result: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, chainResult)
 }
 
 // HandleCommitSession commits session changes to disk or returns a patch.
@@ -223,11 +206,7 @@ func HandleCommitSession(ctx context.Context, mgr *session.SessionManager, args 
 		return types.ErrorResult(fmt.Sprintf("commit_session failed: %s", err)), nil
 	}
 
-	data, mErr := json.Marshal(commitResult)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling result: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, commitResult)
 }
 
 // HandleDiscardSession discards all session changes without committing.
@@ -247,11 +226,7 @@ func HandleDiscardSession(ctx context.Context, mgr *session.SessionManager, args
 		"session_id": sessionID,
 		"status":     "discarded",
 	}
-	data, mErr := json.Marshal(result)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling result: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, result)
 }
 
 // HandleDestroySession destroys a session and releases all resources.
@@ -272,19 +247,14 @@ func HandleDestroySession(ctx context.Context, mgr *session.SessionManager, args
 			"status":     "already_destroyed",
 			"note":       "Session was already cleaned up. If you used preview_edit, sessions are created and destroyed automatically.",
 		}
-		data, _ := json.Marshal(result)
-		return types.TextResult(string(data)), nil
+		return EncodeResult(ctx, result)
 	}
 
 	result := map[string]any{
 		"session_id": sessionID,
 		"status":     "destroyed",
 	}
-	data, mErr := json.Marshal(result)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling result: %s", mErr)), nil
-	}
-	return types.TextResult(string(data)), nil
+	return EncodeResult(ctx, result)
 }
 
 // HandleSimulateEditAtomic creates a session, applies an edit, evaluates, and destroys atomically.
@@ -369,15 +339,12 @@ func HandleSimulateEditAtomic(ctx context.Context, mgr *session.SessionManager, 
 		return types.ErrorResult(fmt.Sprintf("LSP state revert failed: %s", discardErr)), nil
 	}
 
-	data, mErr := json.Marshal(evalResult)
-	if mErr != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling result: %s", mErr)), nil
-	}
 	simHint := "Safe to apply. Use apply_edit to write to disk."
 	if len(evalResult.ErrorsIntroduced) > 0 {
 		simHint = fmt.Sprintf("Edit introduces %d error(s). Review and fix before applying.", len(evalResult.ErrorsIntroduced))
 	} else if evalResult.NetDelta > 0 {
 		simHint = "Edit introduces warnings. Review before applying."
 	}
-	return appendHint(types.TextResult(string(data)), simHint), nil
+	encoded, _ := EncodeResult(ctx, evalResult)
+	return appendHint(encoded, simHint), nil
 }

@@ -153,11 +153,8 @@ func HandleDetectChanges(ctx context.Context, client *lsp.LSPClient, args map[st
 	impactData["changed_files"] = filtered
 	impactData["scope"] = scope
 
-	data, err := json.Marshal(impactData)
-	if err != nil {
-		return types.ErrorResult(fmt.Sprintf("marshaling response: %s", err)), nil
-	}
-	return appendHint(types.TextResult(string(data)), "Review high-risk symbols before committing. Use blast_radius on specific files for detailed analysis."), nil
+	encoded, _ := EncodeResult(ctx, impactData)
+	return appendHint(encoded, "Review high-risk symbols before committing. Use blast_radius on specific files for detailed analysis."), nil
 }
 
 // enrichSymbols adds a "risk" field to each entry in changed_symbols based on

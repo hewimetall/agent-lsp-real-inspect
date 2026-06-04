@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/blackwell-systems/agent-lsp/internal/lsp"
@@ -31,14 +30,10 @@ func HandleAddWorkspaceFolder(ctx context.Context, client *lsp.LSPClient, args m
 	}
 
 	folders := client.GetWorkspaceFolders()
-	data, err := json.Marshal(map[string]any{
+	return EncodeResult(ctx, map[string]any{
 		"added":             path,
 		"workspace_folders": folders,
 	})
-	if err != nil {
-		return types.ErrorResult(fmt.Sprintf("marshal response: %s", err)), nil
-	}
-	return types.TextResult(string(data)), nil
 }
 
 // HandleRemoveWorkspaceFolder removes a directory from the LSP workspace.
@@ -57,28 +52,20 @@ func HandleRemoveWorkspaceFolder(ctx context.Context, client *lsp.LSPClient, arg
 	}
 
 	folders := client.GetWorkspaceFolders()
-	data, err := json.Marshal(map[string]any{
+	return EncodeResult(ctx, map[string]any{
 		"removed":           path,
 		"workspace_folders": folders,
 	})
-	if err != nil {
-		return types.ErrorResult(fmt.Sprintf("marshal response: %s", err)), nil
-	}
-	return types.TextResult(string(data)), nil
 }
 
 // HandleListWorkspaceFolders returns the current workspace folder list.
-func HandleListWorkspaceFolders(_ context.Context, client *lsp.LSPClient, _ map[string]any) (types.ToolResult, error) {
+func HandleListWorkspaceFolders(ctx context.Context, client *lsp.LSPClient, _ map[string]any) (types.ToolResult, error) {
 	if err := CheckInitialized(client); err != nil {
 		return types.ErrorResult(err.Error()), nil
 	}
 
 	folders := client.GetWorkspaceFolders()
-	data, err := json.Marshal(map[string]any{
+	return EncodeResult(ctx, map[string]any{
 		"workspace_folders": folders,
 	})
-	if err != nil {
-		return types.ErrorResult(fmt.Sprintf("marshal response: %s", err)), nil
-	}
-	return types.TextResult(string(data)), nil
 }
