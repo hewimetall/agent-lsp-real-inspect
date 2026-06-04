@@ -12,12 +12,14 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	gcf "github.com/blackwell-systems/agent-lsp/internal/encoding/gcf"
 	"github.com/blackwell-systems/agent-lsp/internal/lsp"
 	"github.com/blackwell-systems/agent-lsp/internal/types"
 	uriPkg "github.com/blackwell-systems/agent-lsp/internal/uri"
@@ -129,4 +131,42 @@ func appendHint(result types.ToolResult, hint string) types.ToolResult {
 		Text: "Next step: " + hint,
 	})
 	return result
+}
+
+// outputFormatKey is a context key for the output format preference.
+type outputFormatKey struct{}
+
+// ContextWithOutputFormat returns a new context with the output format set.
+func ContextWithOutputFormat(ctx context.Context, format string) context.Context {
+	return context.WithValue(ctx, outputFormatKey{}, format)
+}
+
+// OutputFormatFromContext returns the output format from context, defaulting to "json".
+func OutputFormatFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(outputFormatKey{}).(string); ok && v != "" {
+		return v
+	}
+	return "json"
+}
+
+// EncodeResult marshals data as JSON or GCF based on the output format in ctx.
+// Falls back to JSON if GCF encoding fails or format is unrecognized.
+func EncodeResult(ctx context.Context, data any) (types.ToolResult, error) {
+	format := OutputFormatFromContext(ctx)
+	switch format {
+	case "gcf":
+		encoded, err := gcf.Encode(data)
+		if err != nil {
+			// Fall back to JSON on GCF encoding failure
+			raw, _ := json.Marshal(data)
+			return types.TextResult(string(raw)), nil
+		}
+		return types.TextResult(encoded), nil
+	default:
+		raw, err := json.Marshal(data)
+		if err != nil {
+			return types.ErrorResult(err.Error()), nil
+		}
+		return types.TextResult(string(raw)), nil
+	}
 }
