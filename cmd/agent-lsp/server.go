@@ -284,6 +284,7 @@ type toolDeps struct {
 	auditLogger               *audit.Logger
 	phaseTracker              *phase.Tracker
 	notifyHub                 *notify.Hub
+	outputFormat              string // "json" (default) or "gcf"; set from MCP capabilities
 }
 
 // Run creates and starts the MCP server.
@@ -356,6 +357,7 @@ func Run(ctx context.Context, resolver lsp.ClientResolver, registry *extensions.
 		auditLogger:               auditLogger,
 		phaseTracker:              phaseTracker,
 		notifyHub:                 notifyHub,
+		outputFormat:              "json",
 	}
 
 	registerWorkspaceTools(deps)
