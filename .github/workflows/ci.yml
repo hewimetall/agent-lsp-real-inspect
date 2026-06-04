@@ -474,6 +474,8 @@ jobs:
 
       - name: Run speculative session tests
         run: GOWORK=off go test -v -run TestSpeculativeSessions ./test/ -timeout 20m
+        env:
+          AGENT_LSP_OUTPUT_FORMAT: json
 
   # SQL via sqls (requires live PostgreSQL service)
   multi-lang-sql:
@@ -765,3 +767,5 @@ jobs:
 
       - name: Run get_cross_repo_references test
         run: GOWORK=off go test -v -run TestGetCrossRepoReferences ./test/ -timeout 5m
+        env:
+          AGENT_LSP_OUTPUT_FORMAT: json
