@@ -709,12 +709,16 @@ jobs:
             --reuse-server \
             --junit results.xml \
             --badge badge.json
+        env:
+          AGENT_LSP_OUTPUT_FORMAT: json
 
       - name: Lint MCP tool schemas
         run: |
           mcp-assert lint \
             --server "agent-lsp go:gopls" \
             --threshold 0
+        env:
+          AGENT_LSP_OUTPUT_FORMAT: json
 
       - name: Upload JUnit results
         if: always()
