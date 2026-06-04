@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, Semantic Versioning.
 
+## [Unreleased]
+
+### Added
+- **GCF output format**: All 66 tool handlers now support [GCF (Graph Compact Format)](https://github.com/blackwell-systems/gcf) as an optional output encoding. GCF replaces JSON field-name repetition with positional encoding, reducing tool response tokens by 34-44% on structured data. Enable with `AGENT_LSP_OUTPUT_FORMAT=gcf`. JSON remains the default.
+  - New package: `internal/encoding/gcf/` wrapping `gcf-go` `EncodeGeneric`
+  - New helper: `EncodeResult(ctx, data)` in `internal/tools/helpers.go` switches JSON vs GCF based on context
+  - Format injected automatically via `addToolWithPhaseCheck`; no per-handler configuration needed
+  - New dependency: `github.com/blackwell-systems/gcf-go` v0.1.1
+
 ## [0.12.0] - 2026-06-02
 
 ### Fixed
