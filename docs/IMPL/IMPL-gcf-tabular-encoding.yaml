@@ -33,7 +33,6 @@ suitability_assessment: |
 
     Recommendation: Clear speedup. Six agents with non-trivial logic, independent file
     ownership in Wave 2, and a meaningful build/test cycle.
-build_command: GOWORK=off go build ./...
 test_command: GOWORK=off go test ./internal/... ./cmd/...
 lint_command: GOWORK=off go vet ./...
 file_ownership:
@@ -433,6 +432,7 @@ waves:
             - internal/tools/helpers.go
             - internal/tools/helpers_test.go
             - cmd/agent-lsp/server.go
+      base_commit: 067ee7237d886845f22e95cc4aeb8da9731ad44c
     - number: 2
       agents:
         - id: C
@@ -769,6 +769,11 @@ quality_gates:
         - type: test
           command: GOWORK=off go test ./internal/... ./cmd/...
           required: true
+post_merge_checklist:
+    groups:
+        - title: Background Service Initialization
+          items:
+            - description: Verify if helpers_test.go needs initialization in Server constructor
 scaffolds:
     - file_path: internal/encoding/gcf/encode.go
       contents: |
@@ -780,6 +785,48 @@ scaffolds:
             return "", nil
         }
       status: committed
+completion_reports:
+    A:
+        status: complete
+        branch: polywave/gcf-tabular-encoding/wave1-agent-A
+        commit: 3c25467
+        files_changed:
+            - go.mod
+            - go.sum
+            - internal/encoding/gcf/encode.go
+            - internal/encoding/gcf/encode_test.go
+        files_created:
+            - internal/encoding/gcf/encode_test.go
+        tests_added:
+            - TestEncode_StructSlice
+            - TestEncode_MapWithNestedSlice
+            - TestEncode_Nil
+            - TestEncode_SingleStruct
+            - TestEncode_RoundTrip_FieldsAndValues
+            - TestEncode_EmptySlice
+            - TestEncode_Primitive
+        verification: PASS
+        notes: gcf-go EncodeGeneric returns (string) not (string, error); Encode wrapper returns nil error always and empty string for nil input. All 7 tests passing.
+    B:
+        status: complete
+        branch: polywave/gcf-tabular-encoding/wave1-agent-B
+        commit: 4eb236e
+        files_changed:
+            - internal/tools/helpers.go
+            - internal/tools/helpers_test.go
+            - cmd/agent-lsp/server.go
+        files_created:
+            - internal/tools/helpers_test.go
+        tests_added:
+            - TestOutputFormatFromContext_Default
+            - TestOutputFormatFromContext_GCF
+            - TestOutputFormatFromContext_EmptyString
+            - TestEncodeResult_JSON
+            - TestEncodeResult_GCF
+            - TestEncodeResult_UnknownFormat
+            - TestEncodeResult_JSONMarshalError
+        verification: PASS
+        notes: Context helpers, EncodeResult, and toolDeps.outputFormat field all implemented. 7 tests passing. GCF stub returns empty string; tests will strengthen once Agent A completes gcf-go integration.
 pre_mortem:
     overall_risk: medium
     rows:
@@ -814,5 +861,5 @@ pre_mortem:
           mitigation: |
             Agent A should try v0.1.1 first, fall back to v0.1.0 or latest. The
             Encode wrapper isolates the rest of the codebase from API changes.
-state: "REVIEWED"
+state: REVIEWED
 injection_method: hook

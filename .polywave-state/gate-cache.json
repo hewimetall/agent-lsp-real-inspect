@@ -24,6 +24,42 @@
         "cached_at": "2026-06-04T02:53:57.360808-07:00"
       }
     },
+    "61930b3e6013da46057eb6334fe2c864": {
+      "build": {
+        "gate_type": "build",
+        "command": "go build ./...",
+        "passed": true,
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "from_cache": true,
+        "cached_at": "2026-06-04T03:04:54.383249-07:00"
+      }
+    },
+    "9ef33566c629050d99a40cee26878a32": {
+      "test": {
+        "gate_type": "test",
+        "command": "GOWORK=off go test ./internal/... ./cmd/...",
+        "passed": true,
+        "exit_code": 0,
+        "stdout": "ok  \tgithub.com/blackwell-systems/agent-lsp/internal/audit\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/config\t(cached)\n?   \tgithub.com/blackwell-systems/agent-lsp/internal/encoding/gcf\t[no test files]\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/extensions\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/httpauth\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/logging\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/lsp\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/notify\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/phase\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/resources\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/session\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/tools\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/types\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/uri\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/cmd/agent-lsp\t(cached)\n",
+        "stderr": "",
+        "from_cache": true,
+        "cached_at": "2026-06-04T03:04:55.411677-07:00"
+      }
+    },
+    "de86c7eb03a74a94ad9b749fed849af1": {
+      "lint": {
+        "gate_type": "lint",
+        "command": "go vet ./...",
+        "passed": true,
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "from_cache": true,
+        "cached_at": "2026-06-04T03:04:54.870833-07:00"
+      }
+    },
     "ded5035f1fbcc4d1763bd34b8c8b18da": {
       "lint": {
         "gate_type": "lint",
