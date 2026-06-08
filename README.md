@@ -47,6 +47,9 @@ Language servers stay indexed across agent sessions. First session: indexes work
 **Multi-language, single session**  
 One agent-lsp process routes `.go` to gopls, `.ts` to tsserver, `.py` to pyright. No reconfiguration between projects. Session persists across files and repositories.
 
+**Token-optimized output**  
+Tool responses encoded in [GCF](https://github.com/blackwell-systems/gcf) by default. 79% fewer tokens than JSON with [90.7% LLM comprehension accuracy](https://gcformat.com/guide/benchmarks.html) across 10 models and 3 providers. Zero training required.
+
 **How the pieces fit together:** [LSP](https://microsoft.github.io/language-server-protocol/) (Language Server Protocol) is how editors get code intelligence: completions, diagnostics, go-to-definition. [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) is the standard way AI tools like Claude Code discover and call external tools. agent-lsp bridges the two: language server intelligence, accessible to AI agents.
 
 ## Use it when
