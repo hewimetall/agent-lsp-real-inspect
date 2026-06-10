@@ -6,6 +6,7 @@ go 1.26.1
 // Agent E (Wave 2) runs `go mod tidy` to resolve github.com/modelcontextprotocol/go-sdk.
 
 require (
+	github.com/blackwell-systems/gcf-go v1.0.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/google/jsonschema-go v0.4.2
 	github.com/modelcontextprotocol/go-sdk v1.4.1
@@ -13,7 +14,6 @@ require (
 )
 
 require (
-	github.com/blackwell-systems/gcf-go v0.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
