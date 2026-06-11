@@ -106,8 +106,8 @@ func TestHandleGetCrossRepoReferences_EmptyRootsSlice(t *testing.T) {
 // TestBuildCrossRepoPayload verifies the graph payload construction for cross-repo references.
 func TestBuildCrossRepoPayload(t *testing.T) {
 	refs := []crossRepoRef{
-		{File: "/consumer/a.go", Line: 10, Column: 5, Repo: "/consumer"},
-		{File: "/consumer/b.go", Line: 20, Column: 3, Repo: "/consumer"},
+		{File: "/consumer/pkg/a.go", Line: 10, Column: 5, Repo: "/consumer"},
+		{File: "/consumer/cmd/b.go", Line: 20, Column: 3, Repo: "/consumer"},
 	}
 	p := buildCrossRepoPayload("pkg.Func", refs, []string{"/consumer"})
 	if p.Tool != "cross_repo" {
