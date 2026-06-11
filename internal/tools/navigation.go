@@ -15,8 +15,10 @@ import (
 	"context"
 	"fmt"
 
+	gcf "github.com/blackwell-systems/agent-lsp/internal/encoding/gcf"
 	"github.com/blackwell-systems/agent-lsp/internal/lsp"
 	"github.com/blackwell-systems/agent-lsp/internal/types"
+	gcfgo "github.com/blackwell-systems/gcf-go"
 )
 
 // formatLocations converts a slice of LSP Location values to FormattedLocation,
@@ -45,7 +47,30 @@ func locationsResult(ctx context.Context, locs []types.Location) (types.ToolResu
 	if err != nil {
 		return types.ErrorResult(fmt.Sprintf("formatting locations: %s", err)), nil
 	}
+	if OutputFormatFromContext(ctx) == "gcf" {
+		payload := buildLocationsPayload(formatted)
+		return EncodeResult(ctx, payload)
+	}
 	return EncodeResult(ctx, formatted)
+}
+
+// buildLocationsPayload converts formatted locations into a flat graph
+// Payload (symbols at distance 1, no edges). Used by find_references
+// and go_to_* navigation tools.
+func buildLocationsPayload(locs []types.FormattedLocation) *gcfgo.Payload {
+	var symbols []gcfgo.Symbol
+	for i, loc := range locs {
+		qn := gcf.QualifiedName(loc.FilePath, fmt.Sprintf("ref_%d", i+1))
+		score := max(0.1, 1.0-float64(i)*0.05)
+		symbols = append(symbols, gcfgo.Symbol{
+			QualifiedName: qn,
+			Kind:          "var",
+			Score:         score,
+			Provenance:    "lsp_resolved",
+			Distance:      1,
+		})
+	}
+	return gcf.BuildGraphPayload("find_references", symbols, nil)
 }
 
 // HandleGetReferences retrieves all references to the symbol at the given location.
