@@ -18,8 +18,10 @@ import (
 	"fmt"
 	"strings"
 
+	gcf "github.com/blackwell-systems/agent-lsp/internal/encoding/gcf"
 	"github.com/blackwell-systems/agent-lsp/internal/lsp"
 	"github.com/blackwell-systems/agent-lsp/internal/types"
+	gcfgo "github.com/blackwell-systems/gcf-go"
 )
 
 // HandleGetDiagnostics retrieves LSP diagnostics for a file or all open documents.
@@ -355,6 +357,14 @@ func HandleGetDocumentSymbols(ctx context.Context, client *lsp.LSPClient, args m
 		return AppendTokenMeta(appendHint(types.TextResult(renderOutline(shifted, 0)), docSymbolHint), filePath), nil
 	}
 
+	if OutputFormatFromContext(ctx) == "gcf" {
+		payload := buildDocumentSymbolsPayload(shifted, filePath)
+		encodedResult, eErr := EncodeResult(ctx, payload)
+		if eErr != nil {
+			return encodedResult, eErr
+		}
+		return AppendTokenMeta(appendHint(encodedResult, docSymbolHint), filePath), nil
+	}
 	encodedResult, eErr := EncodeResult(ctx, shifted)
 	if eErr != nil {
 		return encodedResult, eErr
@@ -418,6 +428,11 @@ func HandleGetWorkspaceSymbols(ctx context.Context, client *lsp.LSPClient, args 
 
 	wsSymHint := "Use inspect_symbol on a symbol for type details."
 	if detailLevel == "basic" || detailLevel == "" {
+		if OutputFormatFromContext(ctx) == "gcf" {
+			payload := buildWorkspaceSymbolsPayload(symbols)
+			encoded, _ := EncodeResult(ctx, payload)
+			return appendHint(encoded, wsSymHint), nil
+		}
 		encoded, _ := EncodeResult(ctx, symbols)
 		return appendHint(encoded, wsSymHint), nil
 	}
@@ -609,4 +624,37 @@ func toInt(args map[string]any, key string) (int, error) {
 	default:
 		return 0, fmt.Errorf("argument %q must be a number, got %T", key, v)
 	}
+}
+
+// buildDocumentSymbolsPayload converts document symbols into a flat graph Payload.
+func buildDocumentSymbolsPayload(symbols []types.DocumentSymbol, filePath string) *gcfgo.Payload {
+	var gcfSymbols []gcfgo.Symbol
+	for i, sym := range symbols {
+		score := max(0.1, 1.0-float64(i)*0.02)
+		gcfSymbols = append(gcfSymbols, gcfgo.Symbol{
+			QualifiedName: gcf.QualifiedName(filePath, sym.Name),
+			Kind:          gcf.MapSymbolKind(sym.Kind),
+			Score:         score,
+			Provenance:    "lsp_resolved",
+			Distance:      0,
+		})
+	}
+	return gcf.BuildGraphPayload("list_symbols", gcfSymbols, nil)
+}
+
+// buildWorkspaceSymbolsPayload converts workspace symbols into a flat graph Payload.
+func buildWorkspaceSymbolsPayload(symbols []types.SymbolInformation) *gcfgo.Payload {
+	var gcfSymbols []gcfgo.Symbol
+	for i, sym := range symbols {
+		fp, _ := URIToFilePath(sym.Location.URI)
+		score := max(0.1, 1.0-float64(i)*0.02)
+		gcfSymbols = append(gcfSymbols, gcfgo.Symbol{
+			QualifiedName: gcf.QualifiedName(fp, sym.Name),
+			Kind:          gcf.MapSymbolKind(sym.Kind),
+			Score:         score,
+			Provenance:    "lsp_resolved",
+			Distance:      0,
+		})
+	}
+	return gcf.BuildGraphPayload("find_symbol", gcfSymbols, nil)
 }
