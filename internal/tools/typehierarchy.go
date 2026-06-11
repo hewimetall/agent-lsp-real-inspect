@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"strings"
 
+	gcf "github.com/blackwell-systems/agent-lsp/internal/encoding/gcf"
 	"github.com/blackwell-systems/agent-lsp/internal/lsp"
 	"github.com/blackwell-systems/agent-lsp/internal/types"
+	gcfgo "github.com/blackwell-systems/gcf-go"
 )
 
 // typeHierarchyResult is the JSON shape returned by HandleTypeHierarchy.
@@ -83,5 +85,82 @@ func HandleTypeHierarchy(ctx context.Context, client *lsp.LSPClient, args map[st
 		}
 	}
 
+	if OutputFormatFromContext(ctx) == "gcf" {
+		payload := buildTypeHierarchyPayload(result, filePath)
+		return EncodeResult(ctx, payload)
+	}
 	return EncodeResult(ctx, result)
+}
+
+// buildTypeHierarchyPayload converts a typeHierarchyResult into a graph Payload.
+func buildTypeHierarchyPayload(result typeHierarchyResult, filePath string) *gcfgo.Payload {
+	var symbols []gcfgo.Symbol
+	var edges []gcfgo.Edge
+
+	// Target items (distance 0)
+	for _, item := range result.Items {
+		fp, _ := URIToFilePath(item.URI)
+		if fp == "" {
+			fp = filePath
+		}
+		symbols = append(symbols, gcfgo.Symbol{
+			QualifiedName: gcf.QualifiedName(fp, item.Name),
+			Kind:          gcf.MapSymbolKind(item.Kind),
+			Score:         1.0,
+			Provenance:    "lsp_resolved",
+			Distance:      0,
+		})
+	}
+
+	// Supertypes (distance 1)
+	for i, item := range result.Supertypes {
+		fp, _ := URIToFilePath(item.URI)
+		qn := gcf.QualifiedName(fp, item.Name)
+		score := max(0.1, 0.9-float64(i)*0.05)
+		symbols = append(symbols, gcfgo.Symbol{
+			QualifiedName: qn,
+			Kind:          gcf.MapSymbolKind(item.Kind),
+			Score:         score,
+			Provenance:    "lsp_resolved",
+			Distance:      1,
+		})
+		if len(result.Items) > 0 {
+			targetFP, _ := URIToFilePath(result.Items[0].URI)
+			if targetFP == "" {
+				targetFP = filePath
+			}
+			edges = append(edges, gcfgo.Edge{
+				Source:   gcf.QualifiedName(targetFP, result.Items[0].Name),
+				Target:   qn,
+				EdgeType: "extends",
+			})
+		}
+	}
+
+	// Subtypes (distance 1)
+	for i, item := range result.Subtypes {
+		fp, _ := URIToFilePath(item.URI)
+		qn := gcf.QualifiedName(fp, item.Name)
+		score := max(0.1, 0.8-float64(i)*0.05)
+		symbols = append(symbols, gcfgo.Symbol{
+			QualifiedName: qn,
+			Kind:          gcf.MapSymbolKind(item.Kind),
+			Score:         score,
+			Provenance:    "lsp_resolved",
+			Distance:      1,
+		})
+		if len(result.Items) > 0 {
+			targetFP, _ := URIToFilePath(result.Items[0].URI)
+			if targetFP == "" {
+				targetFP = filePath
+			}
+			edges = append(edges, gcfgo.Edge{
+				Source:   qn,
+				Target:   gcf.QualifiedName(targetFP, result.Items[0].Name),
+				EdgeType: "implements",
+			})
+		}
+	}
+
+	return gcf.BuildGraphPayload("type_hierarchy", symbols, edges)
 }
