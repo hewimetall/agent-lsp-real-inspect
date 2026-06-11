@@ -58,6 +58,9 @@ func TestQualifiedName(t *testing.T) {
 		{"/src/foo.go", "Bar", "/src.Bar"},
 		{"", "Baz", "Baz"},
 		{"/a.go", "X", "/.X"},
+		{"/src/app.ts", "(property) callback", "/src.(property)_callback"},
+		{"", "express Router callback", "express_Router_callback"},
+		{"/src/lib.ts", "fn<T>(arg: string) => void", "/src.fn<T>(arg:_string)_=>_void"},
 	}
 	for _, tt := range tests {
 		got := QualifiedName(tt.filePath, tt.symbolName)

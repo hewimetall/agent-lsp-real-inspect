@@ -47,7 +47,14 @@ func MapSymbolKind(kind types.SymbolKind) string {
 // QualifiedName derives a qualified name from a file path and symbol name.
 // Format: "pkg/path.SymbolName" using the last two path segments for brevity.
 // Returns just symbolName when filePath is empty.
+//
+// GCF graph format uses whitespace-separated positional fields, so the
+// qualified name must not contain spaces. Spaces in symbol names (common
+// in TypeScript: "(property) callback", generic signatures, etc.) are
+// replaced with underscores.
 func QualifiedName(filePath, symbolName string) string {
+	// Sanitize: GCF qname field is whitespace-delimited, spaces break parsing.
+	symbolName = strings.ReplaceAll(symbolName, " ", "_")
 	if filePath == "" {
 		return symbolName
 	}
