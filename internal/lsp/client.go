@@ -652,6 +652,15 @@ func (c *LSPClient) waitForWorkspaceReady(ctx context.Context) {
 	c.workspaceLoaded.Store(true)
 }
 
+// ensureWorkspaceReady is a fast-path check: if the workspace is already loaded,
+// returns immediately (atomic bool). Otherwise blocks up to 60s for indexing.
+// Call at the top of every query method to prevent -32001 errors.
+func (c *LSPClient) ensureWorkspaceReady(ctx context.Context) {
+	if !c.workspaceLoaded.Load() {
+		c.waitForWorkspaceReady(ctx)
+	}
+}
+
 // WaitForWorkspaceReadyTimeout blocks until all active $/progress tokens are
 // done or the given timeout elapses. Use this when the default 60s cap is
 // insufficient (e.g. jdtls Maven workspace indexing).
@@ -1596,6 +1605,7 @@ func (c *LSPClient) GetInfoOnLocation(ctx context.Context, uri string, pos types
 		logging.Log(logging.LevelDebug, "server does not support hover")
 		return "", nil
 	}
+	c.ensureWorkspaceReady(ctx)
 	result, err := c.sendRequest(ctx, "textDocument/hover", map[string]any{
 		"textDocument": map[string]any{"uri": uri},
 		"position":     pos,
@@ -1648,6 +1658,7 @@ func (c *LSPClient) GetCompletion(ctx context.Context, uri string, pos types.Pos
 		logging.Log(logging.LevelDebug, "server does not support completion")
 		return types.CompletionList{Items: []types.CompletionItem{}}, nil
 	}
+	c.ensureWorkspaceReady(ctx)
 	result, err := c.sendRequest(ctx, "textDocument/completion", map[string]any{
 		"textDocument": map[string]any{"uri": uri},
 		"position":     pos,
@@ -1666,6 +1677,7 @@ func (c *LSPClient) GetCodeActions(ctx context.Context, uri string, rng types.Ra
 		logging.Log(logging.LevelDebug, "server does not support codeAction")
 		return []types.CodeAction{}, nil
 	}
+	c.ensureWorkspaceReady(ctx)
 	// Retrieve diagnostics that overlap the requested range.
 	c.diagMu.RLock()
 	allDiags := c.diags[uri]
@@ -1702,6 +1714,7 @@ func (c *LSPClient) GetDefinition(ctx context.Context, uri string, pos types.Pos
 		logging.Log(logging.LevelDebug, "server does not support definition")
 		return []types.Location{}, nil
 	}
+	c.ensureWorkspaceReady(ctx)
 	result, err := c.sendRequest(ctx, "textDocument/definition", map[string]any{
 		"textDocument": map[string]any{"uri": uri},
 		"position":     pos,
@@ -1718,6 +1731,7 @@ func (c *LSPClient) GetTypeDefinition(ctx context.Context, uri string, pos types
 		logging.Log(logging.LevelDebug, "server does not support typeDefinition")
 		return []types.Location{}, nil
 	}
+	c.ensureWorkspaceReady(ctx)
 	result, err := c.sendRequest(ctx, "textDocument/typeDefinition", map[string]any{
 		"textDocument": map[string]any{"uri": uri},
 		"position":     pos,
@@ -1734,6 +1748,7 @@ func (c *LSPClient) GetImplementation(ctx context.Context, uri string, pos types
 		logging.Log(logging.LevelDebug, "server does not support implementation")
 		return []types.Location{}, nil
 	}
+	c.ensureWorkspaceReady(ctx)
 	result, err := c.sendRequest(ctx, "textDocument/implementation", map[string]any{
 		"textDocument": map[string]any{"uri": uri},
 		"position":     pos,
@@ -1750,6 +1765,7 @@ func (c *LSPClient) GetDeclaration(ctx context.Context, uri string, pos types.Po
 		logging.Log(logging.LevelDebug, "server does not support declaration")
 		return []types.Location{}, nil
 	}
+	c.ensureWorkspaceReady(ctx)
 	result, err := c.sendRequest(ctx, "textDocument/declaration", map[string]any{
 		"textDocument": map[string]any{"uri": uri},
 		"position":     pos,
@@ -1813,6 +1829,7 @@ func (c *LSPClient) GetDocumentSymbols(ctx context.Context, uri string) ([]types
 		logging.Log(logging.LevelDebug, "server does not support documentSymbol")
 		return []types.DocumentSymbol{}, nil
 	}
+	c.ensureWorkspaceReady(ctx)
 	result, err := c.sendRequest(ctx, "textDocument/documentSymbol", map[string]any{
 		"textDocument": map[string]any{"uri": uri},
 	})
@@ -1831,6 +1848,7 @@ func (c *LSPClient) GetWorkspaceSymbols(ctx context.Context, query string) ([]ty
 		logging.Log(logging.LevelDebug, "server does not support workspaceSymbol")
 		return []types.SymbolInformation{}, nil
 	}
+	c.ensureWorkspaceReady(ctx)
 	result, err := c.sendRequest(ctx, "workspace/symbol", map[string]any{
 		"query": query,
 	})
@@ -1854,6 +1872,7 @@ func (c *LSPClient) PrepareCallHierarchy(ctx context.Context, uri string, pos ty
 		logging.Log(logging.LevelDebug, "server does not support callHierarchy")
 		return []types.CallHierarchyItem{}, nil
 	}
+	c.ensureWorkspaceReady(ctx)
 	result, err := c.sendRequest(ctx, "textDocument/prepareCallHierarchy", map[string]any{
 		"textDocument": map[string]any{"uri": uri},
 		"position":     pos,
@@ -1915,6 +1934,7 @@ func (c *LSPClient) GetInlayHints(ctx context.Context, uri string, rng types.Ran
 		logging.Log(logging.LevelDebug, "server does not support inlayHint")
 		return []types.InlayHint{}, nil
 	}
+	c.ensureWorkspaceReady(ctx)
 	result, err := c.sendRequest(ctx, "textDocument/inlayHint", map[string]any{
 		"textDocument": map[string]any{"uri": uri},
 		"range":        rng,
@@ -1939,6 +1959,7 @@ func (c *LSPClient) PrepareTypeHierarchy(ctx context.Context, uri string, pos ty
 		logging.Log(logging.LevelDebug, "server does not support typeHierarchy")
 		return []types.TypeHierarchyItem{}, nil
 	}
+	c.ensureWorkspaceReady(ctx)
 	result, err := c.sendRequest(ctx, "textDocument/prepareTypeHierarchy", map[string]any{
 		"textDocument": map[string]any{"uri": uri},
 		"position":     pos,
@@ -1998,6 +2019,7 @@ func (c *LSPClient) GetSignatureHelp(ctx context.Context, uri string, pos types.
 		logging.Log(logging.LevelDebug, "server does not support signatureHelp")
 		return nil, nil
 	}
+	c.ensureWorkspaceReady(ctx)
 	result, err := c.sendRequest(ctx, "textDocument/signatureHelp", map[string]any{
 		"textDocument": map[string]any{"uri": uri},
 		"position":     pos,
@@ -2488,6 +2510,7 @@ func (c *LSPClient) GetDocumentHighlights(ctx context.Context, uri string, pos t
 		logging.Log(logging.LevelDebug, "server does not support documentHighlight")
 		return []types.DocumentHighlight{}, nil
 	}
+	c.ensureWorkspaceReady(ctx)
 	result, err := c.sendRequest(ctx, "textDocument/documentHighlight", map[string]any{
 		"textDocument": map[string]any{"uri": uri},
 		"position":     pos,
@@ -2693,6 +2716,7 @@ func (c *LSPClient) GetSemanticTokens(ctx context.Context, uri string, rng types
 		logging.Log(logging.LevelDebug, "server does not support semanticTokens")
 		return []types.SemanticToken{}, nil
 	}
+	c.ensureWorkspaceReady(ctx)
 
 	c.legendMu.RLock()
 	tokenTypes := make([]string, len(c.legendTypes))
