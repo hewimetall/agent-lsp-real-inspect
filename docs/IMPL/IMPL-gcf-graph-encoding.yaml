@@ -1,0 +1,1307 @@
+title: GCF Graph Payload Encoding for Symbol-Returning Tools
+feature_slug: gcf-graph-encoding
+verdict: SUITABLE
+suitability_assessment: |
+    Suitability gate results:
+
+    1. File decomposition: 10+ files across two clear phases. Phase 1 creates
+       the shared type mapping layer (2 new files in internal/encoding/gcf/).
+       Phase 2 migrates 8 existing tool handlers. All handlers are in separate
+       files with disjoint ownership. PASS.
+
+    2. Investigation-first items: None. The gcf-go v1.0.0 API is stable and
+       already in go.mod. The Payload/Symbol/Edge types are documented. The
+       existing EncodeResult pathway is well understood. PASS.
+
+    3. Interface discoverability: Yes. The EncodeGraphResult function signature
+       and the BuildGraphPayload helper can be fully specified from gcf-go types.
+       Each tool handler's mapping from its result type to Payload is deterministic.
+       PASS.
+
+    4. Pre-implementation status: encode.go has Encode() wrapping EncodeGeneric.
+       helpers.go has EncodeResult() with json/gcf switch. No graph encoding
+       exists yet. All work is TODO.
+
+    5. Parallelization value: Build+test cycle is ~10s (GOWORK=off go test ./internal/...).
+       8 tool handlers can be migrated in parallel by 4 agents (2 files each).
+       Wave 1 (type mapping layer) is a dependency for Wave 2 (tool migration).
+       Clear speedup: 4 parallel agents vs 8 sequential file edits.
+
+    Estimated times:
+    - Scout phase: ~8 min
+    - Agent execution: ~12 min (Wave 1: 1 agent ~5 min, Wave 2: 4 agents ~7 min parallel)
+    - Merge and verification: ~4 min
+    Total Polywave time: ~24 min
+
+    Sequential baseline: ~40 min (5 agents x 8 min avg)
+    Time savings: ~16 min (40% faster)
+
+    Recommendation: Clear speedup. Proceed.
+test_command: GOWORK=off go test ./internal/... ./cmd/...
+lint_command: GOWORK=off go vet ./...
+file_ownership:
+    - file: internal/encoding/gcf/graph.go
+      agent: A
+      wave: 1
+      action: new
+    - file: internal/encoding/gcf/graph_test.go
+      agent: A
+      wave: 1
+      action: new
+    - file: internal/tools/helpers.go
+      agent: A
+      wave: 1
+      action: modify
+    - file: internal/tools/helpers_test.go
+      agent: A
+      wave: 1
+      action: modify
+    - file: internal/tools/change_impact.go
+      agent: B
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+    - file: internal/tools/detect_changes.go
+      agent: B
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+    - file: internal/tools/change_impact_test.go
+      agent: B
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+    - file: internal/tools/detect_changes_test.go
+      agent: B
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+    - file: internal/tools/callhierarchy.go
+      agent: C
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+    - file: internal/tools/explore.go
+      agent: C
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+    - file: internal/tools/explore_test.go
+      agent: C
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+    - file: internal/tools/cross_repo.go
+      agent: D
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+    - file: internal/tools/navigation.go
+      agent: D
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+    - file: internal/tools/cross_repo_test.go
+      agent: D
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+    - file: internal/tools/typehierarchy.go
+      agent: E
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+    - file: internal/tools/analysis.go
+      agent: E
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+    - file: internal/tools/typehierarchy_test.go
+      agent: E
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+interface_contracts:
+    - name: EncodeGraphResult
+      description: |
+        Builds a gcf-go Payload from tool-specific symbol/edge data, then encodes
+        it using gcf.Encode. Called by EncodeResult when data is *gcf.Payload.
+      definition: |
+        // In internal/encoding/gcf/graph.go
+        func EncodeGraph(p *gcfgo.Payload) (string, error)
+      location: internal/encoding/gcf/graph.go
+    - name: EncodeResult format awareness
+      description: |
+        EncodeResult gains a type switch: if data is *gcf.Payload and format is
+        "gcf", call gcf.EncodeGraph(). Otherwise fall through to existing paths.
+      definition: |
+        // In internal/tools/helpers.go, updated EncodeResult:
+        func EncodeResult(ctx context.Context, data any) (types.ToolResult, error)
+        // When format == "gcf":
+        //   if p, ok := data.(*gcfgo.Payload); ok { return gcf.EncodeGraph(p) }
+        //   else { return gcf.Encode(data) }  // existing tabular fallback
+      location: internal/tools/helpers.go
+    - name: MapSymbolKind
+      description: |
+        Maps LSP SymbolKind int to gcf-go kind string using KindAbbrev-compatible
+        names (function, method, type, interface, class, field, var, const, etc.).
+      definition: |
+        // In internal/encoding/gcf/graph.go
+        func MapSymbolKind(kind types.SymbolKind) string
+      location: internal/encoding/gcf/graph.go
+    - name: QualifiedName
+      description: |
+        Derives a qualified name from a file path and symbol name.
+        Format: "pkg/path.SymbolName" (Go convention).
+      definition: |
+        // In internal/encoding/gcf/graph.go
+        func QualifiedName(filePath, symbolName string) string
+      location: internal/encoding/gcf/graph.go
+    - name: BuildGraphPayload
+      description: |
+        Convenience constructor that creates a *gcf.Payload with tool name,
+        symbols, and edges populated. Used by each tool handler to build
+        the Payload before passing to EncodeResult.
+      definition: |
+        // In internal/encoding/gcf/graph.go
+        func BuildGraphPayload(tool string, symbols []gcfgo.Symbol, edges []gcfgo.Edge) *gcfgo.Payload
+      location: internal/encoding/gcf/graph.go
+waves:
+    - number: 1
+      agents:
+        - id: A
+          task: |
+            ## Type Mapping Layer and EncodeResult Integration
+
+            ### What to implement
+
+            **File 1: internal/encoding/gcf/graph.go (NEW)**
+
+            Create the graph encoding bridge between agent-lsp's LSP types and gcf-go's
+            Payload/Symbol/Edge types. This file provides all shared helpers that Wave 2
+            tool handlers will use.
+
+            Functions to implement:
+
+            1. `MapSymbolKind(kind types.SymbolKind) string`
+               Map LSP SymbolKind integers to gcf-go kind strings. Mapping:
+               - 1 (File) -> "file"
+               - 2 (Module) -> "package"
+               - 3 (Namespace) -> "package"
+               - 4 (Package) -> "package"
+               - 5 (Class) -> "class"
+               - 6 (Method) -> "method"
+               - 7 (Property) -> "field"
+               - 8 (Field) -> "field"
+               - 9 (Constructor) -> "method"
+               - 10 (Enum) -> "type"
+               - 11 (Interface) -> "interface"
+               - 12 (Function) -> "function"
+               - 13 (Variable) -> "var"
+               - 14 (Constant) -> "const"
+               - 15 (String) -> "const"
+               - 16 (Number) -> "const"
+               - 17 (Boolean) -> "const"
+               - 18 (Array) -> "type"
+               - 19 (Object) -> "type"
+               - 20 (Key) -> "field"
+               - 21 (Null) -> "const"
+               - 22 (EnumMember) -> "const"
+               - 23 (Struct) -> "type"
+               - 24 (Event) -> "function"
+               - 25 (Operator) -> "function"
+               - 26 (TypeParameter) -> "type"
+               - default -> "var"
+
+            2. `QualifiedName(filePath, symbolName string) string`
+               Derive qualified name from file path and symbol name.
+               - Extract the directory-based package path from filePath
+               - Use the two last path segments for brevity (e.g., "tools/change_impact")
+               - Format: "pkg/path.SymbolName"
+               - Handle empty filePath gracefully (return just symbolName)
+
+            3. `BuildGraphPayload(tool string, symbols []gcfgo.Symbol, edges []gcfgo.Edge) *gcfgo.Payload`
+               Convenience constructor. Returns:
+               ```go
+               &gcfgo.Payload{
+                   Tool:    tool,
+                   Symbols: symbols,
+                   Edges:   edges,
+               }
+               ```
+
+            4. `EncodeGraph(p *gcfgo.Payload) (string, error)`
+               Thin wrapper around `gcfgo.Encode(p)`. Returns error if p is nil.
+               ```go
+               if p == nil {
+                   return "", nil
+               }
+               return gcfgo.Encode(p), nil
+               ```
+
+            Import: `gcfgo "github.com/blackwell-systems/gcf-go"` and
+            `"github.com/blackwell-systems/agent-lsp/internal/types"`.
+
+            **File 2: internal/encoding/gcf/graph_test.go (NEW)**
+
+            Test all four functions:
+            - TestMapSymbolKind: verify Function(12)->\"function\", Method(6)->\"method\",
+              Class(5)->\"class\", Interface(11)->\"interface\", unknown(99)->\"var\"
+            - TestQualifiedName: verify path extraction, empty path handling
+            - TestBuildGraphPayload: verify all fields populated, nil symbols/edges -> empty slices
+            - TestEncodeGraph: verify non-empty output for valid payload, nil returns empty string
+
+            **File 3: internal/tools/helpers.go (MODIFY)**
+
+            Update EncodeResult to detect *gcfgo.Payload and use graph encoding.
+
+            Add import: `gcfgo "github.com/blackwell-systems/gcf-go"`
+
+            In the EncodeResult function, modify the "gcf" case. Find this exact text:
+
+            ```go
+            case "gcf":
+            	encoded, err := gcf.Encode(data)
+            	if err != nil {
+            		// Fall back to JSON on GCF encoding failure
+            		raw, _ := json.Marshal(data)
+            		return types.TextResult(string(raw)), nil
+            	}
+            	return types.TextResult(encoded), nil
+            ```
+
+            Replace with:
+
+            ```go
+            case "gcf":
+            	// Graph-profile: if data is already a *gcf.Payload, use graph encoding
+            	if p, ok := data.(*gcfgo.Payload); ok {
+            		encoded, err := gcf.EncodeGraph(p)
+            		if err != nil {
+            			raw, _ := json.Marshal(data)
+            			return types.TextResult(string(raw)), nil
+            		}
+            		return types.TextResult(encoded), nil
+            	}
+            	// Tabular fallback for non-Payload data
+            	encoded, err := gcf.Encode(data)
+            	if err != nil {
+            		raw, _ := json.Marshal(data)
+            		return types.TextResult(string(raw)), nil
+            	}
+            	return types.TextResult(encoded), nil
+            ```
+
+            **File 4: internal/tools/helpers_test.go (MODIFY)**
+
+            Add test for the new Payload path in EncodeResult:
+
+            ```go
+            func TestEncodeResult_GCF_GraphPayload(t *testing.T) {
+                ctx := ContextWithOutputFormat(context.Background(), "gcf")
+                p := &gcfgo.Payload{
+                    Tool: "test_tool",
+                    Symbols: []gcfgo.Symbol{
+                        {QualifiedName: "pkg.Func", Kind: "function", Score: 1.0, Provenance: "lsp_resolved", Distance: 0},
+                    },
+                    Edges: []gcfgo.Edge{
+                        {Source: "pkg.Func", Target: "pkg.Caller", EdgeType: "called_by"},
+                    },
+                }
+                result, err := EncodeResult(ctx, p)
+                // verify no error, non-empty text, contains "pkg.Func"
+            }
+            ```
+
+            Add import: `gcfgo "github.com/blackwell-systems/gcf-go"` to the test file.
+
+            ### Interfaces
+
+            - `EncodeGraph(p *gcfgo.Payload) (string, error)` in internal/encoding/gcf/graph.go
+            - `MapSymbolKind(kind types.SymbolKind) string` in internal/encoding/gcf/graph.go
+            - `QualifiedName(filePath, symbolName string) string` in internal/encoding/gcf/graph.go
+            - `BuildGraphPayload(tool string, symbols []gcfgo.Symbol, edges []gcfgo.Edge) *gcfgo.Payload` in internal/encoding/gcf/graph.go
+
+            ### Tests
+
+            - internal/encoding/gcf/graph_test.go: 4+ test functions covering all helpers
+            - internal/tools/helpers_test.go: 1 new test for Payload-aware EncodeResult
+
+            ### Verification gate
+
+            ```bash
+            GOWORK=off go build ./internal/encoding/gcf/... && \
+            GOWORK=off go vet ./internal/encoding/gcf/... && \
+            GOWORK=off go test ./internal/encoding/gcf/... && \
+            GOWORK=off go test ./internal/tools/ -run TestEncodeResult
+            ```
+
+            Postconditions:
+            ```bash
+            # (a) EncodeGraph function exists
+            grep -c "func EncodeGraph" internal/encoding/gcf/graph.go
+            # expected: 1
+            # (b) MapSymbolKind function exists
+            grep -c "func MapSymbolKind" internal/encoding/gcf/graph.go
+            # expected: 1
+            # (c) EncodeResult handles *gcfgo.Payload
+            grep -c "gcfgo.Payload" internal/tools/helpers.go
+            # expected: >= 1
+            ```
+
+            ### Constraints
+
+            - Do NOT modify internal/encoding/gcf/encode.go. The existing Encode()
+              function for tabular encoding must remain unchanged.
+            - Do NOT modify any tool handler files (change_impact.go, etc.). Those
+              are owned by Wave 2 agents.
+            - Do NOT add any CLI registration or server.go changes.
+          files:
+            - internal/encoding/gcf/graph.go
+            - internal/encoding/gcf/graph_test.go
+            - internal/tools/helpers.go
+            - internal/tools/helpers_test.go
+    - number: 2
+      agents:
+        - id: B
+          task: |
+            ## Migrate blast_radius and detect_changes to Graph Encoding
+
+            ### What to implement
+
+            **File 1: internal/tools/change_impact.go (MODIFY)**
+
+            Add a graph encoding path to HandleGetChangeImpact. After the response
+            map is built (around line 316), check the output format and build a
+            *gcf.Payload when format is "gcf".
+
+            Find this exact text in HandleGetChangeImpact:
+            ```go
+            	response := map[string]any{
+            		"changed_symbols":  changedSymbols,
+            		"affected_symbols": symbolsWithCallers,
+            		"test_files":       testFiles,
+            		"test_functions":   testFunctions,
+            		"non_test_callers": nonTestCallers,
+            		"summary":          summary,
+            		"warnings":         refWarnings,
+            	}
+
+            	result, err := EncodeResult(ctx, response)
+            ```
+
+            Before `result, err := EncodeResult(ctx, response)`, insert a format check:
+
+            ```go
+            	if OutputFormatFromContext(ctx) == "gcf" {
+            		payload := buildChangeImpactPayload(changedSymbols, symbolsWithCallers, nonTestCallers, testFunctions)
+            		result, err := EncodeResult(ctx, payload)
+            		if err != nil {
+            			return types.ErrorResult(fmt.Sprintf("encoding response: %s", err)), nil
+            		}
+            		return appendHint(result, impactHint), nil
+            	}
+            ```
+
+            Add a new helper function `buildChangeImpactPayload`:
+
+            ```go
+            func buildChangeImpactPayload(changed []symbolRef, affected []symbolWithCallers, nonTestCallers []symbolRef, testFuncs []symbolRef) *gcfgo.Payload {
+                var symbols []gcfgo.Symbol
+                var edges []gcfgo.Edge
+
+                // Target symbols (distance 0, score 1.0)
+                for _, s := range changed {
+                    symbols = append(symbols, gcfgo.Symbol{
+                        QualifiedName: gcf.QualifiedName(s.File, s.Name),
+                        Kind:          "function",
+                        Score:         1.0,
+                        Provenance:    "lsp_resolved",
+                        Distance:      0,
+                    })
+                }
+
+                // Non-test callers (distance 1, score 0.9 decaying by ref index)
+                seen := map[string]bool{}
+                for i, c := range nonTestCallers {
+                    qn := gcf.QualifiedName(c.File, c.Name)
+                    if seen[qn] { continue }
+                    seen[qn] = true
+                    score := max(0.1, 0.9 - float64(i)*0.05)
+                    symbols = append(symbols, gcfgo.Symbol{
+                        QualifiedName: qn,
+                        Kind:          "function",
+                        Score:         score,
+                        Provenance:    "lsp_resolved",
+                        Distance:      1,
+                    })
+                    // Edge: caller -> changed symbol
+                    edges = append(edges, gcfgo.Edge{
+                        Source:   qn,
+                        Target:   gcf.QualifiedName(c.File, c.Name),
+                        EdgeType: "calls",
+                    })
+                }
+
+                // Test functions (distance 1, score 0.7)
+                for _, t := range testFuncs {
+                    qn := gcf.QualifiedName(t.File, t.Name)
+                    if seen[qn] { continue }
+                    seen[qn] = true
+                    symbols = append(symbols, gcfgo.Symbol{
+                        QualifiedName: qn,
+                        Kind:          "function",
+                        Score:         0.7,
+                        Provenance:    "lsp_resolved",
+                        Distance:      1,
+                    })
+                }
+
+                return gcf.BuildGraphPayload("blast_radius", symbols, edges)
+            }
+            ```
+
+            Add imports at top of file:
+            ```go
+            gcf "github.com/blackwell-systems/agent-lsp/internal/encoding/gcf"
+            gcfgo "github.com/blackwell-systems/gcf-go"
+            ```
+
+            **File 2: internal/tools/detect_changes.go (MODIFY)**
+
+            detect_changes delegates to HandleGetChangeImpact and then re-encodes.
+            The graph encoding is handled transitively: when format is "gcf",
+            HandleGetChangeImpact already returns graph-encoded output.
+
+            However, detect_changes currently parses the impact result as JSON to
+            enrich with risk classification. When format is "gcf", skip the JSON
+            parse/re-encode and return the graph result directly with enrichment
+            handled in the payload.
+
+            Find this exact text in HandleDetectChanges:
+            ```go
+            	// Parse the impact result to enrich with risk classification.
+            	var impactData map[string]any
+            	if len(impactResult.Content) > 0 {
+            		if jsonErr := json.Unmarshal([]byte(impactResult.Content[0].Text), &impactData); jsonErr != nil {
+            			// If we can't parse, return the raw impact result.
+            			return impactResult, nil
+            		}
+            	}
+            ```
+
+            Before this block, add an early return for GCF format:
+            ```go
+            	// Graph-profile: blast_radius already produced a graph payload.
+            	// Risk classification is not applicable in graph mode; return as-is.
+            	if OutputFormatFromContext(ctx) == "gcf" {
+            		return appendHint(impactResult, "Review high-risk symbols before committing. Use blast_radius on specific files for detailed analysis."), nil
+            	}
+            ```
+
+            **File 3: internal/tools/change_impact_test.go (MODIFY)**
+
+            Add a test that verifies graph output contains expected symbol qualified
+            names when format is "gcf" and data is a *gcf.Payload. Test the
+            buildChangeImpactPayload helper directly:
+
+            ```go
+            func TestBuildChangeImpactPayload(t *testing.T) {
+                changed := []symbolRef{{Name: "Foo", File: "/src/pkg/foo.go", Line: 10}}
+                affected := []symbolWithCallers{}
+                callers := []symbolRef{{Name: "Bar", File: "/src/pkg/bar.go", Line: 20}}
+                tests := []symbolRef{{Name: "TestFoo", File: "/src/pkg/foo_test.go", Line: 5}}
+                p := buildChangeImpactPayload(changed, affected, callers, tests)
+                if p.Tool != "blast_radius" { t.Errorf("wrong tool: %s", p.Tool) }
+                if len(p.Symbols) < 3 { t.Errorf("expected >= 3 symbols, got %d", len(p.Symbols)) }
+                // Verify target symbol is distance 0
+                if p.Symbols[0].Distance != 0 { t.Errorf("target should be distance 0") }
+            }
+            ```
+
+            **File 4: internal/tools/detect_changes_test.go (MODIFY)**
+
+            Add a test verifying that when OutputFormatFromContext returns "gcf",
+            HandleDetectChanges returns the impact result without JSON re-parsing.
+            This can be a unit test of the early-return logic.
+
+            ### Interfaces
+
+            - Uses: `gcf.QualifiedName`, `gcf.BuildGraphPayload`, `gcf.EncodeGraph`
+              from internal/encoding/gcf/graph.go (Wave 1, Agent A)
+            - Uses: `OutputFormatFromContext` from internal/tools/helpers.go
+
+            ### Verification gate
+
+            ```bash
+            GOWORK=off go build ./internal/tools/... && \
+            GOWORK=off go vet ./internal/tools/... && \
+            GOWORK=off go test ./internal/tools/ -run "TestBuildChangeImpact|TestDetect"
+            ```
+
+            Postconditions:
+            ```bash
+            # (a) buildChangeImpactPayload exists
+            grep -c "func buildChangeImpactPayload" internal/tools/change_impact.go
+            # expected: 1
+            # (b) GCF early return in detect_changes
+            grep -c "OutputFormatFromContext" internal/tools/detect_changes.go
+            # expected: >= 1
+            ```
+
+            ### Constraints
+
+            - Do NOT modify internal/tools/helpers.go (owned by Agent A, Wave 1).
+            - Do NOT modify any other tool handler files.
+            - Do NOT change the JSON output path; it must remain identical for
+              the default format.
+          files:
+            - internal/tools/change_impact.go
+            - internal/tools/detect_changes.go
+            - internal/tools/change_impact_test.go
+            - internal/tools/detect_changes_test.go
+          dependencies:
+            - A
+        - id: C
+          task: |
+            ## Migrate find_callers and explore_symbol to Graph Encoding
+
+            ### What to implement
+
+            **File 1: internal/tools/callhierarchy.go (MODIFY)**
+
+            Add graph encoding path to HandleCallHierarchy. After the result is
+            built (the callHierarchyResult struct is populated, around line 117),
+            check format and build a Payload.
+
+            Find this exact text:
+            ```go
+            	encoded, encErr := EncodeResult(ctx, result)
+            	if encErr != nil {
+            		return types.ErrorResult(fmt.Sprintf("marshaling call hierarchy result: %s", encErr)), nil
+            	}
+            	return appendHint(encoded, hint), nil
+            ```
+
+            Replace with:
+            ```go
+            	if OutputFormatFromContext(ctx) == "gcf" {
+            		payload := buildCallHierarchyPayload(result, filePath)
+            		encoded, encErr := EncodeResult(ctx, payload)
+            		if encErr != nil {
+            			return types.ErrorResult(fmt.Sprintf("marshaling call hierarchy result: %s", encErr)), nil
+            		}
+            		return appendHint(encoded, hint), nil
+            	}
+            	encoded, encErr := EncodeResult(ctx, result)
+            	if encErr != nil {
+            		return types.ErrorResult(fmt.Sprintf("marshaling call hierarchy result: %s", encErr)), nil
+            	}
+            	return appendHint(encoded, hint), nil
+            ```
+
+            Add helper function:
+            ```go
+            func buildCallHierarchyPayload(result callHierarchyResult, filePath string) *gcfgo.Payload {
+                var symbols []gcfgo.Symbol
+                var edges []gcfgo.Edge
+
+                // Target items (distance 0)
+                for _, item := range result.Items {
+                    fp, _ := URIToFilePath(item.URI)
+                    if fp == "" { fp = filePath }
+                    symbols = append(symbols, gcfgo.Symbol{
+                        QualifiedName: gcf.QualifiedName(fp, item.Name),
+                        Kind:          gcf.MapSymbolKind(item.Kind),
+                        Score:         1.0,
+                        Provenance:    "lsp_resolved",
+                        Distance:      0,
+                    })
+                }
+
+                // Incoming callers (distance 1)
+                for i, call := range result.Incoming {
+                    fp, _ := URIToFilePath(call.From.URI)
+                    qn := gcf.QualifiedName(fp, call.From.Name)
+                    score := max(0.1, 0.9 - float64(i)*0.05)
+                    symbols = append(symbols, gcfgo.Symbol{
+                        QualifiedName: qn,
+                        Kind:          gcf.MapSymbolKind(call.From.Kind),
+                        Score:         score,
+                        Provenance:    "lsp_resolved",
+                        Distance:      1,
+                    })
+                    // Edge: caller calls target
+                    if len(result.Items) > 0 {
+                        targetFP, _ := URIToFilePath(result.Items[0].URI)
+                        if targetFP == "" { targetFP = filePath }
+                        edges = append(edges, gcfgo.Edge{
+                            Source:   qn,
+                            Target:   gcf.QualifiedName(targetFP, result.Items[0].Name),
+                            EdgeType: "calls",
+                        })
+                    }
+                }
+
+                // Outgoing callees (distance 1)
+                for i, call := range result.Outgoing {
+                    fp, _ := URIToFilePath(call.To.URI)
+                    qn := gcf.QualifiedName(fp, call.To.Name)
+                    score := max(0.1, 0.8 - float64(i)*0.05)
+                    symbols = append(symbols, gcfgo.Symbol{
+                        QualifiedName: qn,
+                        Kind:          gcf.MapSymbolKind(call.To.Kind),
+                        Score:         score,
+                        Provenance:    "lsp_resolved",
+                        Distance:      1,
+                    })
+                    if len(result.Items) > 0 {
+                        targetFP, _ := URIToFilePath(result.Items[0].URI)
+                        if targetFP == "" { targetFP = filePath }
+                        edges = append(edges, gcfgo.Edge{
+                            Source:   gcf.QualifiedName(targetFP, result.Items[0].Name),
+                            Target:   qn,
+                            EdgeType: "calls",
+                        })
+                    }
+                }
+
+                return gcf.BuildGraphPayload("find_callers", symbols, edges)
+            }
+            ```
+
+            Add imports:
+            ```go
+            gcf "github.com/blackwell-systems/agent-lsp/internal/encoding/gcf"
+            gcfgo "github.com/blackwell-systems/gcf-go"
+            ```
+
+            **File 2: internal/tools/explore.go (MODIFY)**
+
+            Add graph encoding path to HandleExploreSymbol. Find this exact text:
+            ```go
+            	return EncodeResult(ctx, result)
+            }
+
+            // topNFiles returns the top N files by reference count.
+            ```
+
+            Replace with:
+            ```go
+            	if OutputFormatFromContext(ctx) == "gcf" {
+            		payload := buildExplorePayload(result, cleanPath)
+            		return EncodeResult(ctx, payload)
+            	}
+            	return EncodeResult(ctx, result)
+            }
+
+            // buildExplorePayload converts an exploreResult into a graph Payload.
+            func buildExplorePayload(result exploreResult, filePath string) *gcfgo.Payload {
+                var symbols []gcfgo.Symbol
+                var edges []gcfgo.Edge
+
+                // Target symbol (distance 0) - use source symbol name if available
+                targetName := "target"
+                if result.Source != nil {
+                    targetName = result.Source.SymbolName
+                }
+                targetQN := gcf.QualifiedName(filePath, targetName)
+                symbols = append(symbols, gcfgo.Symbol{
+                    QualifiedName: targetQN,
+                    Kind:          "function",
+                    Score:         1.0,
+                    Provenance:    "lsp_resolved",
+                    Distance:      0,
+                    Signature:     result.TypeInfo,
+                })
+
+                // Callers (distance 1)
+                for i, c := range result.Callers {
+                    qn := gcf.QualifiedName(c.File, c.Name)
+                    score := max(0.1, 0.9 - float64(i)*0.05)
+                    symbols = append(symbols, gcfgo.Symbol{
+                        QualifiedName: qn,
+                        Kind:          "function",
+                        Score:         score,
+                        Provenance:    "lsp_resolved",
+                        Distance:      1,
+                    })
+                    edges = append(edges, gcfgo.Edge{
+                        Source:   qn,
+                        Target:   targetQN,
+                        EdgeType: "calls",
+                    })
+                }
+
+                return gcf.BuildGraphPayload("explore_symbol", symbols, edges)
+            }
+
+            // topNFiles returns the top N files by reference count.
+            ```
+
+            Add imports:
+            ```go
+            gcf "github.com/blackwell-systems/agent-lsp/internal/encoding/gcf"
+            gcfgo "github.com/blackwell-systems/gcf-go"
+            ```
+
+            **File 3: internal/tools/explore_test.go (MODIFY)**
+
+            Add a test for buildExplorePayload:
+            ```go
+            func TestBuildExplorePayload(t *testing.T) {
+                result := exploreResult{
+                    TypeInfo: "func Foo() error",
+                    Source: &exploreSource{SymbolName: "Foo"},
+                    Callers: []exploreCaller{
+                        {Name: "Bar", File: "/src/bar.go", Line: 10},
+                    },
+                    CallersCount: 1,
+                }
+                p := buildExplorePayload(result, "/src/foo.go")
+                if p.Tool != "explore_symbol" { t.Errorf("wrong tool: %s", p.Tool) }
+                if len(p.Symbols) != 2 { t.Errorf("expected 2 symbols, got %d", len(p.Symbols)) }
+                if len(p.Edges) != 1 { t.Errorf("expected 1 edge, got %d", len(p.Edges)) }
+                if p.Symbols[0].Signature != "func Foo() error" {
+                    t.Errorf("expected signature in target symbol")
+                }
+            }
+            ```
+
+            ### Interfaces
+
+            - Uses: `gcf.QualifiedName`, `gcf.MapSymbolKind`, `gcf.BuildGraphPayload`
+              from internal/encoding/gcf/graph.go (Wave 1, Agent A)
+            - Uses: `OutputFormatFromContext` from internal/tools/helpers.go
+
+            ### Verification gate
+
+            ```bash
+            GOWORK=off go build ./internal/tools/... && \
+            GOWORK=off go vet ./internal/tools/... && \
+            GOWORK=off go test ./internal/tools/ -run "TestBuildCallHierarchy|TestBuildExplore"
+            ```
+
+            Postconditions:
+            ```bash
+            grep -c "func buildCallHierarchyPayload" internal/tools/callhierarchy.go
+            # expected: 1
+            grep -c "func buildExplorePayload" internal/tools/explore.go
+            # expected: 1
+            ```
+
+            ### Constraints
+
+            - Do NOT modify internal/tools/helpers.go (owned by Agent A, Wave 1).
+            - Do NOT modify change_impact.go, detect_changes.go, cross_repo.go,
+              navigation.go, typehierarchy.go, or analysis.go.
+            - Do NOT change the JSON output path for either handler.
+          files:
+            - internal/tools/callhierarchy.go
+            - internal/tools/explore.go
+            - internal/tools/explore_test.go
+          dependencies:
+            - A
+        - id: D
+          task: |
+            ## Migrate cross_repo and find_references to Graph Encoding
+
+            ### What to implement
+
+            **File 1: internal/tools/cross_repo.go (MODIFY)**
+
+            Add graph encoding path to HandleGetCrossRepoReferences. Find this
+            exact text:
+            ```go
+            	return EncodeResult(ctx, response)
+            }
+            ```
+
+            (This is the last line of HandleGetCrossRepoReferences, at approximately
+            line 163.)
+
+            Replace with:
+            ```go
+            	if OutputFormatFromContext(ctx) == "gcf" {
+            		payload := buildCrossRepoPayload(symbolName, refs, consumerRoots)
+            		return EncodeResult(ctx, payload)
+            	}
+            	return EncodeResult(ctx, response)
+            }
+
+            // buildCrossRepoPayload converts cross-repo references into a graph Payload.
+            func buildCrossRepoPayload(symbolName string, refs []crossRepoRef, consumerRoots []string) *gcfgo.Payload {
+                var symbols []gcfgo.Symbol
+                var edges []gcfgo.Edge
+
+                // Target symbol (distance 0)
+                targetQN := symbolName
+                symbols = append(symbols, gcfgo.Symbol{
+                    QualifiedName: targetQN,
+                    Kind:          "function",
+                    Score:         1.0,
+                    Provenance:    "lsp_resolved",
+                    Distance:      0,
+                })
+
+                // References as symbols (distance 1), grouped by repo
+                seen := map[string]bool{}
+                for i, ref := range refs {
+                    qn := gcf.QualifiedName(ref.File, symbolName)
+                    if seen[qn] { continue }
+                    seen[qn] = true
+                    score := max(0.1, 0.9 - float64(i)*0.02)
+                    symbols = append(symbols, gcfgo.Symbol{
+                        QualifiedName: qn,
+                        Kind:          "external",
+                        Score:         score,
+                        Provenance:    "lsp_resolved",
+                        Distance:      1,
+                    })
+                    edges = append(edges, gcfgo.Edge{
+                        Source:   qn,
+                        Target:   targetQN,
+                        EdgeType: "references",
+                    })
+                }
+
+                return gcf.BuildGraphPayload("cross_repo", symbols, edges)
+            }
+            ```
+
+            Add imports:
+            ```go
+            gcf "github.com/blackwell-systems/agent-lsp/internal/encoding/gcf"
+            gcfgo "github.com/blackwell-systems/gcf-go"
+            ```
+
+            **File 2: internal/tools/navigation.go (MODIFY)**
+
+            Add graph encoding path to the locationsResult helper (used by
+            HandleGetReferences and all go_to_* handlers). Find this exact text:
+            ```go
+            func locationsResult(ctx context.Context, locs []types.Location) (types.ToolResult, error) {
+            	formatted, err := formatLocations(locs)
+            	if err != nil {
+            		return types.ErrorResult(fmt.Sprintf("formatting locations: %s", err)), nil
+            	}
+            	return EncodeResult(ctx, formatted)
+            }
+            ```
+
+            Replace with:
+            ```go
+            func locationsResult(ctx context.Context, locs []types.Location) (types.ToolResult, error) {
+            	formatted, err := formatLocations(locs)
+            	if err != nil {
+            		return types.ErrorResult(fmt.Sprintf("formatting locations: %s", err)), nil
+            	}
+            	if OutputFormatFromContext(ctx) == "gcf" {
+            		payload := buildLocationsPayload(formatted)
+            		return EncodeResult(ctx, payload)
+            	}
+            	return EncodeResult(ctx, formatted)
+            }
+
+            // buildLocationsPayload converts formatted locations into a flat graph
+            // Payload (symbols at distance 1, no edges). Used by find_references
+            // and go_to_* navigation tools.
+            func buildLocationsPayload(locs []types.FormattedLocation) *gcfgo.Payload {
+                var symbols []gcfgo.Symbol
+                for i, loc := range locs {
+                    qn := gcf.QualifiedName(loc.FilePath, fmt.Sprintf("ref_%d", i+1))
+                    score := max(0.1, 1.0 - float64(i)*0.05)
+                    symbols = append(symbols, gcfgo.Symbol{
+                        QualifiedName: qn,
+                        Kind:          "var",
+                        Score:         score,
+                        Provenance:    "lsp_resolved",
+                        Distance:      1,
+                    })
+                }
+                return gcf.BuildGraphPayload("find_references", symbols, nil)
+            }
+            ```
+
+            Add imports:
+            ```go
+            gcf "github.com/blackwell-systems/agent-lsp/internal/encoding/gcf"
+            gcfgo "github.com/blackwell-systems/gcf-go"
+            ```
+
+            **File 3: internal/tools/cross_repo_test.go (MODIFY)**
+
+            Add test for buildCrossRepoPayload:
+            ```go
+            func TestBuildCrossRepoPayload(t *testing.T) {
+                refs := []crossRepoRef{
+                    {File: "/consumer/a.go", Line: 10, Column: 5, Repo: "/consumer"},
+                    {File: "/consumer/b.go", Line: 20, Column: 3, Repo: "/consumer"},
+                }
+                p := buildCrossRepoPayload("pkg.Func", refs, []string{"/consumer"})
+                if p.Tool != "cross_repo" { t.Errorf("wrong tool: %s", p.Tool) }
+                if len(p.Symbols) != 3 { t.Errorf("expected 3 symbols (1 target + 2 refs), got %d", len(p.Symbols)) }
+                if len(p.Edges) != 2 { t.Errorf("expected 2 edges, got %d", len(p.Edges)) }
+                if p.Symbols[0].Distance != 0 { t.Errorf("target should be distance 0") }
+            }
+            ```
+
+            ### Interfaces
+
+            - Uses: `gcf.QualifiedName`, `gcf.BuildGraphPayload` from
+              internal/encoding/gcf/graph.go (Wave 1, Agent A)
+            - Uses: `OutputFormatFromContext` from internal/tools/helpers.go
+
+            ### Verification gate
+
+            ```bash
+            GOWORK=off go build ./internal/tools/... && \
+            GOWORK=off go vet ./internal/tools/... && \
+            GOWORK=off go test ./internal/tools/ -run "TestBuildCrossRepo|TestBuildLocations"
+            ```
+
+            Postconditions:
+            ```bash
+            grep -c "func buildCrossRepoPayload" internal/tools/cross_repo.go
+            # expected: 1
+            grep -c "func buildLocationsPayload" internal/tools/navigation.go
+            # expected: 1
+            ```
+
+            ### Constraints
+
+            - Do NOT modify internal/tools/helpers.go (owned by Agent A, Wave 1).
+            - Do NOT modify change_impact.go, callhierarchy.go, explore.go,
+              typehierarchy.go, detect_changes.go, or analysis.go.
+            - Do NOT change the JSON output path for either handler.
+          files:
+            - internal/tools/cross_repo.go
+            - internal/tools/navigation.go
+            - internal/tools/cross_repo_test.go
+          dependencies:
+            - A
+        - id: E
+          task: |
+            ## Migrate type_hierarchy, list_symbols, and find_symbol to Graph Encoding
+
+            ### What to implement
+
+            **File 1: internal/tools/typehierarchy.go (MODIFY)**
+
+            Add graph encoding path to HandleTypeHierarchy. Find this exact text:
+            ```go
+            	return EncodeResult(ctx, result)
+            }
+            ```
+
+            (This is the last line of HandleTypeHierarchy, at approximately line 86.)
+
+            Replace with:
+            ```go
+            	if OutputFormatFromContext(ctx) == "gcf" {
+            		payload := buildTypeHierarchyPayload(result, filePath)
+            		return EncodeResult(ctx, payload)
+            	}
+            	return EncodeResult(ctx, result)
+            }
+
+            // buildTypeHierarchyPayload converts a typeHierarchyResult into a graph Payload.
+            func buildTypeHierarchyPayload(result typeHierarchyResult, filePath string) *gcfgo.Payload {
+                var symbols []gcfgo.Symbol
+                var edges []gcfgo.Edge
+
+                // Target items (distance 0)
+                for _, item := range result.Items {
+                    fp, _ := URIToFilePath(item.URI)
+                    if fp == "" { fp = filePath }
+                    symbols = append(symbols, gcfgo.Symbol{
+                        QualifiedName: gcf.QualifiedName(fp, item.Name),
+                        Kind:          gcf.MapSymbolKind(item.Kind),
+                        Score:         1.0,
+                        Provenance:    "lsp_resolved",
+                        Distance:      0,
+                    })
+                }
+
+                // Supertypes (distance 1)
+                for i, item := range result.Supertypes {
+                    fp, _ := URIToFilePath(item.URI)
+                    qn := gcf.QualifiedName(fp, item.Name)
+                    score := max(0.1, 0.9 - float64(i)*0.05)
+                    symbols = append(symbols, gcfgo.Symbol{
+                        QualifiedName: qn,
+                        Kind:          gcf.MapSymbolKind(item.Kind),
+                        Score:         score,
+                        Provenance:    "lsp_resolved",
+                        Distance:      1,
+                    })
+                    if len(result.Items) > 0 {
+                        targetFP, _ := URIToFilePath(result.Items[0].URI)
+                        if targetFP == "" { targetFP = filePath }
+                        edges = append(edges, gcfgo.Edge{
+                            Source:   gcf.QualifiedName(targetFP, result.Items[0].Name),
+                            Target:   qn,
+                            EdgeType: "extends",
+                        })
+                    }
+                }
+
+                // Subtypes (distance 1)
+                for i, item := range result.Subtypes {
+                    fp, _ := URIToFilePath(item.URI)
+                    qn := gcf.QualifiedName(fp, item.Name)
+                    score := max(0.1, 0.8 - float64(i)*0.05)
+                    symbols = append(symbols, gcfgo.Symbol{
+                        QualifiedName: qn,
+                        Kind:          gcf.MapSymbolKind(item.Kind),
+                        Score:         score,
+                        Provenance:    "lsp_resolved",
+                        Distance:      1,
+                    })
+                    if len(result.Items) > 0 {
+                        targetFP, _ := URIToFilePath(result.Items[0].URI)
+                        if targetFP == "" { targetFP = filePath }
+                        edges = append(edges, gcfgo.Edge{
+                            Source:   qn,
+                            Target:   gcf.QualifiedName(targetFP, result.Items[0].Name),
+                            EdgeType: "implements",
+                        })
+                    }
+                }
+
+                return gcf.BuildGraphPayload("type_hierarchy", symbols, edges)
+            }
+            ```
+
+            Add imports:
+            ```go
+            gcf "github.com/blackwell-systems/agent-lsp/internal/encoding/gcf"
+            gcfgo "github.com/blackwell-systems/gcf-go"
+            ```
+
+            **File 2: internal/tools/analysis.go (MODIFY)**
+
+            Add graph encoding to two handlers: HandleGetDocumentSymbols (list_symbols)
+            and HandleGetWorkspaceSymbols (find_symbol).
+
+            For HandleGetDocumentSymbols, find this exact text:
+            ```go
+            	encodedResult, eErr := EncodeResult(ctx, shifted)
+            	if eErr != nil {
+            		return encodedResult, eErr
+            	}
+            	return AppendTokenMeta(appendHint(encodedResult, docSymbolHint), filePath), nil
+            ```
+
+            Replace with:
+            ```go
+            	if OutputFormatFromContext(ctx) == "gcf" {
+            		payload := buildDocumentSymbolsPayload(shifted, filePath)
+            		encodedResult, eErr := EncodeResult(ctx, payload)
+            		if eErr != nil {
+            			return encodedResult, eErr
+            		}
+            		return AppendTokenMeta(appendHint(encodedResult, docSymbolHint), filePath), nil
+            	}
+            	encodedResult, eErr := EncodeResult(ctx, shifted)
+            	if eErr != nil {
+            		return encodedResult, eErr
+            	}
+            	return AppendTokenMeta(appendHint(encodedResult, docSymbolHint), filePath), nil
+            ```
+
+            For HandleGetWorkspaceSymbols, find this exact text (the basic/empty
+            detail_level path):
+            ```go
+            	if detailLevel == "basic" || detailLevel == "" {
+            		encoded, _ := EncodeResult(ctx, symbols)
+            		return appendHint(encoded, wsSymHint), nil
+            	}
+            ```
+
+            Replace with:
+            ```go
+            	if detailLevel == "basic" || detailLevel == "" {
+            		if OutputFormatFromContext(ctx) == "gcf" {
+            			payload := buildWorkspaceSymbolsPayload(symbols)
+            			encoded, _ := EncodeResult(ctx, payload)
+            			return appendHint(encoded, wsSymHint), nil
+            		}
+            		encoded, _ := EncodeResult(ctx, symbols)
+            		return appendHint(encoded, wsSymHint), nil
+            	}
+            ```
+
+            Add helper functions:
+
+            ```go
+            // buildDocumentSymbolsPayload converts document symbols into a flat graph Payload.
+            func buildDocumentSymbolsPayload(symbols []types.DocumentSymbol, filePath string) *gcfgo.Payload {
+                var gcfSymbols []gcfgo.Symbol
+                for i, sym := range symbols {
+                    score := max(0.1, 1.0 - float64(i)*0.02)
+                    gcfSymbols = append(gcfSymbols, gcfgo.Symbol{
+                        QualifiedName: gcf.QualifiedName(filePath, sym.Name),
+                        Kind:          gcf.MapSymbolKind(sym.Kind),
+                        Score:         score,
+                        Provenance:    "lsp_resolved",
+                        Distance:      0,
+                    })
+                }
+                return gcf.BuildGraphPayload("list_symbols", gcfSymbols, nil)
+            }
+
+            // buildWorkspaceSymbolsPayload converts workspace symbols into a flat graph Payload.
+            func buildWorkspaceSymbolsPayload(symbols []types.SymbolInformation) *gcfgo.Payload {
+                var gcfSymbols []gcfgo.Symbol
+                for i, sym := range symbols {
+                    fp, _ := URIToFilePath(sym.Location.URI)
+                    score := max(0.1, 1.0 - float64(i)*0.02)
+                    gcfSymbols = append(gcfSymbols, gcfgo.Symbol{
+                        QualifiedName: gcf.QualifiedName(fp, sym.Name),
+                        Kind:          gcf.MapSymbolKind(sym.Kind),
+                        Score:         score,
+                        Provenance:    "lsp_resolved",
+                        Distance:      0,
+                    })
+                }
+                return gcf.BuildGraphPayload("find_symbol", gcfSymbols, nil)
+            }
+            ```
+
+            Add imports:
+            ```go
+            gcf "github.com/blackwell-systems/agent-lsp/internal/encoding/gcf"
+            gcfgo "github.com/blackwell-systems/gcf-go"
+            ```
+
+            **File 3: internal/tools/typehierarchy_test.go (MODIFY)**
+
+            Add test for buildTypeHierarchyPayload:
+            ```go
+            func TestBuildTypeHierarchyPayload(t *testing.T) {
+                result := typeHierarchyResult{
+                    Items: []types.TypeHierarchyItem{
+                        {Name: "Reader", Kind: 11, URI: "file:///src/io.go"},
+                    },
+                    Subtypes: []types.TypeHierarchyItem{
+                        {Name: "BufReader", Kind: 5, URI: "file:///src/bufio.go"},
+                    },
+                }
+                p := buildTypeHierarchyPayload(result, "/src/io.go")
+                if p.Tool != "type_hierarchy" { t.Errorf("wrong tool: %s", p.Tool) }
+                if len(p.Symbols) != 2 { t.Errorf("expected 2 symbols, got %d", len(p.Symbols)) }
+                if len(p.Edges) != 1 { t.Errorf("expected 1 edge, got %d", len(p.Edges)) }
+                if p.Edges[0].EdgeType != "implements" {
+                    t.Errorf("expected implements edge, got %s", p.Edges[0].EdgeType)
+                }
+            }
+            ```
+
+            ### Interfaces
+
+            - Uses: `gcf.QualifiedName`, `gcf.MapSymbolKind`, `gcf.BuildGraphPayload`
+              from internal/encoding/gcf/graph.go (Wave 1, Agent A)
+            - Uses: `OutputFormatFromContext`, `URIToFilePath` from internal/tools/helpers.go
+
+            ### Verification gate
+
+            ```bash
+            GOWORK=off go build ./internal/tools/... && \
+            GOWORK=off go vet ./internal/tools/... && \
+            GOWORK=off go test ./internal/tools/ -run "TestBuildTypeHierarchy|TestBuildDocument|TestBuildWorkspace"
+            ```
+
+            Postconditions:
+            ```bash
+            grep -c "func buildTypeHierarchyPayload" internal/tools/typehierarchy.go
+            # expected: 1
+            grep -c "func buildDocumentSymbolsPayload" internal/tools/analysis.go
+            # expected: 1
+            grep -c "func buildWorkspaceSymbolsPayload" internal/tools/analysis.go
+            # expected: 1
+            ```
+
+            ### Constraints
+
+            - Do NOT modify internal/tools/helpers.go (owned by Agent A, Wave 1).
+            - Do NOT modify change_impact.go, callhierarchy.go, explore.go,
+              cross_repo.go, detect_changes.go, or navigation.go.
+            - Do NOT change the JSON output path for any handler.
+            - Do NOT modify any handler other than HandleTypeHierarchy,
+              HandleGetDocumentSymbols, and HandleGetWorkspaceSymbols.
+          files:
+            - internal/tools/typehierarchy.go
+            - internal/tools/analysis.go
+            - internal/tools/typehierarchy_test.go
+          dependencies:
+            - A
+quality_gates:
+    level: standard
+    gates:
+        - type: build
+          command: GOWORK=off go build ./...
+          required: true
+        - type: lint
+          command: GOWORK=off go vet ./...
+          required: true
+        - type: test
+          command: GOWORK=off go test ./internal/... ./cmd/...
+          required: true
+post_merge_checklist:
+    groups: []
+pre_mortem:
+    overall_risk: medium
+    rows:
+        - scenario: Wave 2 agents add gcf-go import but use wrong import alias
+          likelihood: low
+          impact: medium
+          mitigation: |
+            Agent task specifies exact import aliases: gcf for internal/encoding/gcf,
+            gcfgo for github.com/blackwell-systems/gcf-go. Build gate catches mismatches.
+        - scenario: max() builtin not available in older Go versions
+          likelihood: low
+          impact: high
+          mitigation: |
+            go.mod specifies go 1.26.1 which has the max() builtin. No risk.
+        - scenario: URIToFilePath returns error for malformed URIs in test data
+          likelihood: medium
+          impact: low
+          mitigation: |
+            All payload builders use _ for the error return from URIToFilePath,
+            falling back to empty string or the original filePath. Tests use
+            valid file:// URIs.
+        - scenario: Agent modifies a file outside ownership (especially helpers.go from Wave 2)
+          likelihood: medium
+          impact: high
+          mitigation: |
+            Each Wave 2 agent task includes explicit constraint not to modify
+            helpers.go. Build gate verifies compilation without helpers.go changes.
+        - scenario: detect_changes GCF early return loses risk classification data
+          likelihood: medium
+          impact: low
+          mitigation: |
+            Acceptable tradeoff documented in Agent B task. Graph encoding provides
+            structural symbol data; risk classification is a JSON-only enrichment.
+            GCF consumers use gcf-proxy session dedup instead.
+        - scenario: Duplicate symbol QualifiedNames in payload cause dedup collisions
+          likelihood: medium
+          impact: medium
+          mitigation: |
+            Each payload builder uses a seen map to deduplicate by QualifiedName.
+            QualifiedName function uses file path + symbol name for uniqueness.
+state: SCOUT_PENDING
+injection_method: hook
