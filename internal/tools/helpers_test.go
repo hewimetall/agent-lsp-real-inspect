@@ -3,7 +3,10 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
+
+	gcfgo "github.com/blackwell-systems/gcf-go"
 )
 
 func TestOutputFormatFromContext_Default(t *testing.T) {
@@ -84,6 +87,36 @@ func TestEncodeResult_UnknownFormat(t *testing.T) {
 	var parsed map[string]string
 	if err := json.Unmarshal([]byte(result.Content[0].Text), &parsed); err != nil {
 		t.Fatalf("unknown format result is not valid JSON: %v", err)
+	}
+}
+
+func TestEncodeResult_GCF_GraphPayload(t *testing.T) {
+	ctx := ContextWithOutputFormat(context.Background(), "gcf")
+	p := &gcfgo.Payload{
+		Tool: "test_tool",
+		Symbols: []gcfgo.Symbol{
+			{QualifiedName: "pkg.Func", Kind: "function", Score: 1.0, Provenance: "lsp_resolved", Distance: 0},
+		},
+		Edges: []gcfgo.Edge{
+			{Source: "pkg.Func", Target: "pkg.Caller", EdgeType: "called_by"},
+		},
+	}
+	result, err := EncodeResult(ctx, p)
+	if err != nil {
+		t.Fatalf("EncodeResult returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatal("EncodeResult returned error result")
+	}
+	if len(result.Content) == 0 {
+		t.Fatal("EncodeResult returned empty content")
+	}
+	text := result.Content[0].Text
+	if text == "" {
+		t.Fatal("EncodeResult returned empty text for graph payload")
+	}
+	if !strings.Contains(text, "pkg.Func") {
+		t.Errorf("expected output to contain 'pkg.Func', got: %s", text)
 	}
 }
 

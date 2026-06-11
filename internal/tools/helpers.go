@@ -23,6 +23,7 @@ import (
 	"github.com/blackwell-systems/agent-lsp/internal/lsp"
 	"github.com/blackwell-systems/agent-lsp/internal/types"
 	uriPkg "github.com/blackwell-systems/agent-lsp/internal/uri"
+	gcfgo "github.com/blackwell-systems/gcf-go"
 )
 
 // ValidateFilePath resolves filePath to a clean absolute path and, when rootDir
@@ -158,6 +159,16 @@ func EncodeResult(ctx context.Context, data any) (types.ToolResult, error) {
 	format := OutputFormatFromContext(ctx)
 	switch format {
 	case "gcf":
+		// Graph-profile: if data is already a *gcf.Payload, use graph encoding
+		if p, ok := data.(*gcfgo.Payload); ok {
+			encoded, err := gcf.EncodeGraph(p)
+			if err != nil {
+				raw, _ := json.Marshal(data)
+				return types.TextResult(string(raw)), nil
+			}
+			return types.TextResult(encoded), nil
+		}
+		// Tabular fallback for non-Payload data
 		encoded, err := gcf.Encode(data)
 		if err != nil {
 			// Fall back to JSON on GCF encoding failure
