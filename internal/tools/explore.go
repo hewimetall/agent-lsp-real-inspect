@@ -9,8 +9,10 @@ import (
 	"os"
 	"strings"
 
+	gcf "github.com/blackwell-systems/agent-lsp/internal/encoding/gcf"
 	"github.com/blackwell-systems/agent-lsp/internal/lsp"
 	"github.com/blackwell-systems/agent-lsp/internal/types"
+	gcfgo "github.com/blackwell-systems/gcf-go"
 )
 
 // exploreResult is the JSON response structure for explore_symbol.
@@ -176,7 +178,52 @@ func HandleExploreSymbol(ctx context.Context, client *lsp.LSPClient, args map[st
 		TestCallersCount: testCallersCount,
 	}
 
+	if OutputFormatFromContext(ctx) == "gcf" {
+		payload := buildExplorePayload(result, cleanPath)
+		return EncodeResult(ctx, payload)
+	}
 	return EncodeResult(ctx, result)
+}
+
+// buildExplorePayload converts an exploreResult into a graph Payload.
+func buildExplorePayload(result exploreResult, filePath string) *gcfgo.Payload {
+	var symbols []gcfgo.Symbol
+	var edges []gcfgo.Edge
+
+	// Target symbol (distance 0) - use source symbol name if available
+	targetName := "target"
+	if result.Source != nil {
+		targetName = result.Source.SymbolName
+	}
+	targetQN := gcf.QualifiedName(filePath, targetName)
+	symbols = append(symbols, gcfgo.Symbol{
+		QualifiedName: targetQN,
+		Kind:          "function",
+		Score:         1.0,
+		Provenance:    "lsp_resolved",
+		Distance:      0,
+		Signature:     result.TypeInfo,
+	})
+
+	// Callers (distance 1)
+	for i, c := range result.Callers {
+		qn := gcf.QualifiedName(c.File, c.Name)
+		score := max(0.1, 0.9-float64(i)*0.05)
+		symbols = append(symbols, gcfgo.Symbol{
+			QualifiedName: qn,
+			Kind:          "function",
+			Score:         score,
+			Provenance:    "lsp_resolved",
+			Distance:      1,
+		})
+		edges = append(edges, gcfgo.Edge{
+			Source:   qn,
+			Target:   targetQN,
+			EdgeType: "calls",
+		})
+	}
+
+	return gcf.BuildGraphPayload("explore_symbol", symbols, edges)
 }
 
 // topNFiles returns the top N files by reference count.
