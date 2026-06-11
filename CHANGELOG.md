@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, Semantic Versioning.
 
+## [Unreleased]
+
+### Added
+- **GCF graph profile encoding (79-84% fewer tokens)**: 8 symbol-returning tools now emit GCF graph `Payload` objects instead of generic tabular when GCF output is active. This enables gcf-proxy session dedup (92.7% savings by the 5th call).
+  - Tools upgraded: blast_radius, find_callers, explore_symbol, find_references, cross_repo, detect_changes, type_hierarchy, list_symbols/find_symbol
+  - New file: `internal/encoding/gcf/graph.go` with `MapSymbolKind`, `QualifiedName`, `BuildGraphPayload`, `EncodeGraph`
+  - `EncodeResult` gains `*Payload` type switch: graph payloads route to `EncodeGraph`, everything else stays tabular
+  - Score heuristic: 1.0 for target, decaying by distance
+  - Edge types: calls, references, extends, implements
+- **GCF syntax primer in MCP server instructions**: When GCF output is active, the MCP `initialize` response includes a one-line format guide so LLMs can parse GCF output from the first tool call.
+
+### Changed
+- **gcf-go upgraded to v1.0.0** (GCF spec v2.0 stable). Mandatory `profile=` header, streaming trailer format change.
+
 ## [0.13.0] - 2026-06-04
 
 ### Added
