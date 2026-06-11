@@ -24,8 +24,10 @@ import (
 	"sync"
 	"time"
 
+	gcf "github.com/blackwell-systems/agent-lsp/internal/encoding/gcf"
 	"github.com/blackwell-systems/agent-lsp/internal/lsp"
 	"github.com/blackwell-systems/agent-lsp/internal/types"
+	gcfgo "github.com/blackwell-systems/gcf-go"
 )
 
 // isTestFile returns true if the given path looks like a test file.
@@ -323,13 +325,24 @@ func HandleGetChangeImpact(ctx context.Context, client *lsp.LSPClient, args map[
 		"warnings":         refWarnings,
 	}
 
-	result, err := EncodeResult(ctx, response)
-	if err != nil {
-		return types.ErrorResult(fmt.Sprintf("encoding response: %s", err)), nil
-	}
 	impactHint := "Review high-callers symbols before making changes."
 	if len(refWarnings) > 0 {
 		impactHint = fmt.Sprintf("%d warnings encountered during analysis. %s", len(refWarnings), impactHint)
+	}
+
+	// Graph-profile: build a *gcf.Payload for structured graph output.
+	if OutputFormatFromContext(ctx) == "gcf" {
+		payload := buildChangeImpactPayload(changedSymbols, nonTestCallers, testFunctions)
+		result, err := EncodeResult(ctx, payload)
+		if err != nil {
+			return types.ErrorResult(fmt.Sprintf("encoding response: %s", err)), nil
+		}
+		return appendHint(result, impactHint), nil
+	}
+
+	result, err := EncodeResult(ctx, response)
+	if err != nil {
+		return types.ErrorResult(fmt.Sprintf("encoding response: %s", err)), nil
 	}
 	return appendHint(result, impactHint), nil
 }
@@ -637,4 +650,65 @@ func isSyncGuardedSymbol(name string, guardedTypes map[string]bool) bool {
 		}
 	}
 	return false
+}
+
+// buildChangeImpactPayload constructs a *gcfgo.Payload for graph-encoded
+// blast_radius output. Target symbols are distance 0, non-test callers
+// distance 1 with decaying score, test functions distance 1 with score 0.7.
+func buildChangeImpactPayload(changed []symbolRef, nonTestCallers []symbolRef, testFuncs []symbolRef) *gcfgo.Payload {
+	var symbols []gcfgo.Symbol
+	var edges []gcfgo.Edge
+
+	// Target symbols (distance 0, score 1.0)
+	for _, s := range changed {
+		symbols = append(symbols, gcfgo.Symbol{
+			QualifiedName: gcf.QualifiedName(s.File, s.Name),
+			Kind:          "function",
+			Score:         1.0,
+			Provenance:    "lsp_resolved",
+			Distance:      0,
+		})
+	}
+
+	// Non-test callers (distance 1, score 0.9 decaying by ref index)
+	seen := map[string]bool{}
+	for i, c := range nonTestCallers {
+		qn := gcf.QualifiedName(c.File, c.Name)
+		if seen[qn] {
+			continue
+		}
+		seen[qn] = true
+		score := max(0.1, 0.9-float64(i)*0.05)
+		symbols = append(symbols, gcfgo.Symbol{
+			QualifiedName: qn,
+			Kind:          "function",
+			Score:         score,
+			Provenance:    "lsp_resolved",
+			Distance:      1,
+		})
+		// Edge: caller -> changed symbol
+		edges = append(edges, gcfgo.Edge{
+			Source:   qn,
+			Target:   gcf.QualifiedName(c.File, c.Name),
+			EdgeType: "calls",
+		})
+	}
+
+	// Test functions (distance 1, score 0.7)
+	for _, t := range testFuncs {
+		qn := gcf.QualifiedName(t.File, t.Name)
+		if seen[qn] {
+			continue
+		}
+		seen[qn] = true
+		symbols = append(symbols, gcfgo.Symbol{
+			QualifiedName: qn,
+			Kind:          "function",
+			Score:         0.7,
+			Provenance:    "lsp_resolved",
+			Distance:      1,
+		})
+	}
+
+	return gcf.BuildGraphPayload("blast_radius", symbols, edges)
 }
