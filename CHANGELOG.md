@@ -14,6 +14,9 @@ The format is based on Keep a Changelog, Semantic Versioning.
   - Edge types: calls, references, extends, implements
 - **GCF syntax primer in MCP server instructions**: When GCF output is active, the MCP `initialize` response includes a one-line format guide so LLMs can parse GCF output from the first tool call.
 
+### Fixed
+- **LSP workspace ready check on all query methods**: 15 LSP query methods (list_symbols, go_to_definition, find_callers, type_hierarchy, hover, completions, etc.) now wait for workspace indexing before sending requests. Previously only find_references had this check, causing -32001 "content modified" errors when tools were called immediately after start_lsp.
+
 ### Changed
 - **gcf-go upgraded to v1.0.0** (GCF spec v2.0 stable). Mandatory `profile=` header, streaming trailer format change.
 
