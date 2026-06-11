@@ -103,6 +103,27 @@ func TestHandleGetCrossRepoReferences_EmptyRootsSlice(t *testing.T) {
 	}
 }
 
+// TestBuildCrossRepoPayload verifies the graph payload construction for cross-repo references.
+func TestBuildCrossRepoPayload(t *testing.T) {
+	refs := []crossRepoRef{
+		{File: "/consumer/pkg/a.go", Line: 10, Column: 5, Repo: "/consumer"},
+		{File: "/consumer/cmd/b.go", Line: 20, Column: 3, Repo: "/consumer"},
+	}
+	p := buildCrossRepoPayload("pkg.Func", refs, []string{"/consumer"})
+	if p.Tool != "cross_repo" {
+		t.Errorf("wrong tool: %s", p.Tool)
+	}
+	if len(p.Symbols) != 3 {
+		t.Errorf("expected 3 symbols (1 target + 2 refs), got %d", len(p.Symbols))
+	}
+	if len(p.Edges) != 2 {
+		t.Errorf("expected 2 edges, got %d", len(p.Edges))
+	}
+	if p.Symbols[0].Distance != 0 {
+		t.Errorf("target should be distance 0")
+	}
+}
+
 // TestHandleGetCrossRepoReferences_NilClient verifies that a nil client is
 // rejected by CheckInitialized before consumer_roots validation, returning
 // an error about the uninitialized state.
