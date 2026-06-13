@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, Semantic Versioning.
 
-## [Unreleased]
+## [0.15.0] - 2026-06-13
 
 ### Changed
 - **gcf-go upgraded to v1.1.0** (GCF spec v3). Generic profile tool responses (diagnostics, symbol lists, references) now use inline schema encoding and shared array schemas: 25.5% fewer tokens on nested data. Graph profile output unchanged. No API changes required.
