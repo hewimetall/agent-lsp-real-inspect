@@ -2,58 +2,58 @@
   "wave": 2,
   "worktrees": [
     {
+      "agent": "B",
+      "path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-graph-encoding/wave2-agent-B",
+      "branch": "polywave/gcf-graph-encoding/wave2-agent-B"
+    },
+    {
       "agent": "C",
-      "path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-tabular-encoding/wave2-agent-C",
-      "branch": "polywave/gcf-tabular-encoding/wave2-agent-C"
+      "path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-graph-encoding/wave2-agent-C",
+      "branch": "polywave/gcf-graph-encoding/wave2-agent-C"
     },
     {
       "agent": "D",
-      "path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-tabular-encoding/wave2-agent-D",
-      "branch": "polywave/gcf-tabular-encoding/wave2-agent-D"
+      "path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-graph-encoding/wave2-agent-D",
+      "branch": "polywave/gcf-graph-encoding/wave2-agent-D"
     },
     {
       "agent": "E",
-      "path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-tabular-encoding/wave2-agent-E",
-      "branch": "polywave/gcf-tabular-encoding/wave2-agent-E"
-    },
-    {
-      "agent": "F",
-      "path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-tabular-encoding/wave2-agent-F",
-      "branch": "polywave/gcf-tabular-encoding/wave2-agent-F"
+      "path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-graph-encoding/wave2-agent-E",
+      "branch": "polywave/gcf-graph-encoding/wave2-agent-E"
     }
   ],
   "agent_briefs": [
     {
+      "agent": "B",
+      "brief_path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-graph-encoding/wave2-agent-B/.polywave-agent-brief.md",
+      "brief_length": 8739,
+      "journal_dir": "/Users/dayna.blackwell/code/agent-lsp/.polywave-state/wave2/agent-B",
+      "files_owned": 4,
+      "worktree_env_path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-graph-encoding/wave2-agent-B/.polywave-worktree-env"
+    },
+    {
       "agent": "C",
-      "brief_path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-tabular-encoding/wave2-agent-C/.polywave-agent-brief.md",
-      "brief_length": 4492,
+      "brief_path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-graph-encoding/wave2-agent-C/.polywave-agent-brief.md",
+      "brief_length": 9462,
       "journal_dir": "/Users/dayna.blackwell/code/agent-lsp/.polywave-state/wave2/agent-C",
-      "files_owned": 2,
-      "worktree_env_path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-tabular-encoding/wave2-agent-C/.polywave-worktree-env"
+      "files_owned": 3,
+      "worktree_env_path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-graph-encoding/wave2-agent-C/.polywave-worktree-env"
     },
     {
       "agent": "D",
-      "brief_path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-tabular-encoding/wave2-agent-D/.polywave-agent-brief.md",
-      "brief_length": 6578,
+      "brief_path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-graph-encoding/wave2-agent-D/.polywave-agent-brief.md",
+      "brief_length": 7503,
       "journal_dir": "/Users/dayna.blackwell/code/agent-lsp/.polywave-state/wave2/agent-D",
-      "files_owned": 4,
-      "worktree_env_path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-tabular-encoding/wave2-agent-D/.polywave-worktree-env"
+      "files_owned": 3,
+      "worktree_env_path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-graph-encoding/wave2-agent-D/.polywave-worktree-env"
     },
     {
       "agent": "E",
-      "brief_path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-tabular-encoding/wave2-agent-E/.polywave-agent-brief.md",
-      "brief_length": 4366,
+      "brief_path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-graph-encoding/wave2-agent-E/.polywave-agent-brief.md",
+      "brief_length": 10350,
       "journal_dir": "/Users/dayna.blackwell/code/agent-lsp/.polywave-state/wave2/agent-E",
-      "files_owned": 2,
-      "worktree_env_path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-tabular-encoding/wave2-agent-E/.polywave-worktree-env"
-    },
-    {
-      "agent": "F",
-      "brief_path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-tabular-encoding/wave2-agent-F/.polywave-agent-brief.md",
-      "brief_length": 4301,
-      "journal_dir": "/Users/dayna.blackwell/code/agent-lsp/.polywave-state/wave2/agent-F",
-      "files_owned": 2,
-      "worktree_env_path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-tabular-encoding/wave2-agent-F/.polywave-worktree-env"
+      "files_owned": 3,
+      "worktree_env_path": "/Users/dayna.blackwell/code/agent-lsp/.claude/worktrees/polywave/gcf-graph-encoding/wave2-agent-E/.polywave-worktree-env"
     }
   ],
   "steps": [
@@ -179,5 +179,5 @@
     }
   ],
   "success": false,
-  "original_branch": "main"
+  "original_branch": "polywave/gcf-graph-encoding/wave1-agent-A"
 }

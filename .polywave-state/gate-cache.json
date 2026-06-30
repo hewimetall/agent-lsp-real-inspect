@@ -1,5 +1,17 @@
 {
   "entries": {
+    "39826555848f011da91d66eebc9fdd9b": {
+      "test": {
+        "gate_type": "test",
+        "command": "GOWORK=off go test ./internal/... ./cmd/...",
+        "passed": true,
+        "exit_code": 0,
+        "stdout": "ok  \tgithub.com/blackwell-systems/agent-lsp/internal/audit\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/config\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/encoding/gcf\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/extensions\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/httpauth\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/logging\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/lsp\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/notify\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/phase\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/resources\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/session\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/tools\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/types\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/internal/uri\t(cached)\nok  \tgithub.com/blackwell-systems/agent-lsp/cmd/agent-lsp\t(cached)\n",
+        "stderr": "",
+        "from_cache": true,
+        "cached_at": "2026-06-11T00:38:58.223222-07:00"
+      }
+    },
     "462bd7297b5070c0f71885a1a16892bc": {
       "test": {
         "gate_type": "test",
@@ -24,6 +36,18 @@
         "cached_at": "2026-06-04T02:53:57.360808-07:00"
       }
     },
+    "5d964eceb94e620c24c95e40d091b615": {
+      "build": {
+        "gate_type": "build",
+        "command": "GOWORK=off go build ./...",
+        "passed": true,
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "from_cache": true,
+        "cached_at": "2026-06-11T00:38:57.228702-07:00"
+      }
+    },
     "61930b3e6013da46057eb6334fe2c864": {
       "build": {
         "gate_type": "build",
@@ -46,6 +70,18 @@
         "stderr": "",
         "from_cache": true,
         "cached_at": "2026-06-04T03:04:55.411677-07:00"
+      }
+    },
+    "aa78e19572ebd995031a08aad2e0ddaf": {
+      "lint": {
+        "gate_type": "lint",
+        "command": "GOWORK=off go vet ./...",
+        "passed": true,
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "from_cache": true,
+        "cached_at": "2026-06-11T00:38:57.672445-07:00"
       }
     },
     "b70acc6396d541113ad8d8eb0c3a643e": {
