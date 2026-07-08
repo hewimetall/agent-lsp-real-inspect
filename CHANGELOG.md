@@ -3,7 +3,11 @@
 All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, Semantic Versioning.
 
-## [Unreleased]
+## [0.15.1] - 2026-06-24
+
+### Fixed
+- **Scope array double-encoding** ([#10](https://github.com/blackwell-systems/agent-lsp/issues/10)): `start_lsp(scope=["a","b"])` no longer writes a single-element `include` containing the stringified array. Reported by [@nirabo](https://github.com/nirabo).
+- **Windows drive-letter casing** ([#9](https://github.com/blackwell-systems/agent-lsp/issues/9)): `PathToFileURI` now lowercases Windows drive letters, matching what language servers (csharp-ls, roslyn, pyright) emit. Diagnostics and code actions no longer silently empty on Windows. Reported by [@SebastiaanSteenbrink](https://github.com/SebastiaanSteenbrink).
 
 ### Changed
 - **gcf-go upgraded to v1.3.1**. Nested object flattening: fixed-shape nested objects are inlined into parent rows using `>` path columns instead of separate attachment blocks. 20-48% fewer tokens on nested tool responses (blast_radius callers, diagnostics, explore_symbol). Flatten opt-out available via `GenericOptions{NoFlatten: true}`. Graph profile output unchanged.
