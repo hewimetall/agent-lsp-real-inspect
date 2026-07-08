@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, Semantic Versioning.
 
+## [Unreleased]
+
+### Changed
+- **gcf-go upgraded to v1.3.1**. Nested object flattening: fixed-shape nested objects are inlined into parent rows using `>` path columns instead of separate attachment blocks. 20-48% fewer tokens on nested tool responses (blast_radius callers, diagnostics, explore_symbol). Flatten opt-out available via `GenericOptions{NoFlatten: true}`. Graph profile output unchanged.
+
 ## [0.15.0] - 2026-06-13
 
 ### Changed
