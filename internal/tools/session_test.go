@@ -66,6 +66,33 @@ func TestParseScopePaths_Nil(t *testing.T) {
 	}
 }
 
+func TestParseScopePaths_JSONEncodedArray(t *testing.T) {
+	// When scope is typed as string in the args struct but the client sends
+	// a JSON array, Go unmarshals it as a stringified JSON array.
+	got := ParseScopePaths(`["packages/some-project/src", "packages/other/src"]`)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 paths from JSON array string, got %d: %v", len(got), got)
+	}
+	if got[0] != "packages/some-project/src" || got[1] != "packages/other/src" {
+		t.Errorf("unexpected paths: %v", got)
+	}
+}
+
+func TestParseScopePaths_JSONEncodedArraySingle(t *testing.T) {
+	got := ParseScopePaths(`["src"]`)
+	if len(got) != 1 || got[0] != "src" {
+		t.Errorf("expected [src], got %v", got)
+	}
+}
+
+func TestParseScopePaths_InvalidJSON(t *testing.T) {
+	// Strings starting with [ but not valid JSON should be treated as a single path.
+	got := ParseScopePaths("[not-json")
+	if len(got) != 1 || got[0] != "[not-json" {
+		t.Errorf("expected [[not-json]], got %v", got)
+	}
+}
+
 func TestParseScopePaths_UnsupportedType(t *testing.T) {
 	got := ParseScopePaths(42)
 	if got != nil {
