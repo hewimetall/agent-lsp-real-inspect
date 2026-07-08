@@ -43,10 +43,14 @@ func PathToFileURI(p string) string {
 
 	// Windows absolute paths (with drive letter) need a leading slash
 	// inserted before the drive so the URI parses as
-	//   file:///S:/path
+	//   file:///s:/path
 	// rather than treating the drive letter as the authority.
+	// Normalize the drive letter to lowercase: most language servers
+	// (csharp-ls, roslyn, pyright) emit lowercase drive letters in URIs.
+	// Mismatched casing causes silent lookup failures where diagnostics
+	// and symbols are keyed under a different URI than what agent-lsp queries.
 	if len(p) >= 2 && p[1] == ':' && isASCIILetter(p[0]) {
-		p = "/" + p
+		p = "/" + strings.ToLower(p[:1]) + p[1:]
 	}
 
 	// `&url.URL{Scheme: "file", Path: ...}.String()` writes
@@ -72,4 +76,19 @@ func PathToFileURI(p string) string {
 
 func isASCIILetter(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+}
+
+// NormalizeFileURI lowercases the drive letter in a Windows file:// URI
+// so that URIs from different sources (agent-lsp vs language server) match.
+// Non-Windows URIs and non-file URIs are returned unchanged.
+//
+//	file:///C:/foo → file:///c:/foo
+//	file:///c:/foo → file:///c:/foo (no-op)
+//	file:///home/x → file:///home/x (no-op)
+func NormalizeFileURI(uri string) string {
+	// file:///X:/ where X is the drive letter at index 8
+	if len(uri) >= 10 && strings.HasPrefix(uri, "file:///") && uri[9] == ':' && isASCIILetter(uri[8]) {
+		return uri[:8] + strings.ToLower(uri[8:9]) + uri[9:]
+	}
+	return uri
 }

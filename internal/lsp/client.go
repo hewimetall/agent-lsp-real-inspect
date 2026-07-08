@@ -607,7 +607,7 @@ func (c *LSPClient) handlePublishDiagnostics(params json.RawMessage) {
 	c.warmup.NotifyDiagnostic()
 
 	c.diagMu.Lock()
-	c.diags[p.URI] = p.Diagnostics
+	c.diags[NormalizeFileURI(p.URI)] = p.Diagnostics
 	subs := make([]types.DiagnosticUpdateCallback, len(c.diagSubs))
 	copy(subs, c.diagSubs)
 	c.diagMu.Unlock()
@@ -1355,7 +1355,7 @@ func (c *LSPClient) GetOpenDocuments() []string {
 func (c *LSPClient) GetDiagnostics(uri string) []types.LSPDiagnostic {
 	c.diagMu.RLock()
 	defer c.diagMu.RUnlock()
-	d := c.diags[uri]
+	d := c.diags[NormalizeFileURI(uri)]
 	if d == nil {
 		return []types.LSPDiagnostic{}
 	}

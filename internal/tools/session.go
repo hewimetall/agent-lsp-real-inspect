@@ -2,7 +2,9 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/blackwell-systems/agent-lsp/internal/lsp"
@@ -93,12 +95,21 @@ func HandleStartLsp(
 }
 
 // ParseScopePaths extracts scope paths from the args value.
-// Accepts a single string or []interface{} (JSON array).
+// Accepts a single string, a JSON-encoded array string, or []interface{} (JSON array).
 func ParseScopePaths(raw any) []string {
 	switch v := raw.(type) {
 	case string:
 		if v == "" {
 			return nil
+		}
+		// If the string looks like a JSON array, decode it.
+		// This handles the case where a typed string field receives
+		// a JSON array from the client (e.g., scope: ["a", "b"]).
+		if strings.HasPrefix(strings.TrimSpace(v), "[") {
+			var arr []string
+			if json.Unmarshal([]byte(v), &arr) == nil && len(arr) > 0 {
+				return arr
+			}
 		}
 		return []string{v}
 	case []any:
