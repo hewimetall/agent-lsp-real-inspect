@@ -346,7 +346,7 @@ func Run(ctx context.Context, resolver lsp.ClientResolver, registry *extensions.
 		"Prefer these tools over text search for code intelligence tasks. " +
 		"Call prompts/get with a skill name (e.g. lsp-refactor, lsp-inspect, lsp-verify) for full workflow instructions."
 	if outputFormat == "gcf" {
-		instructions += " Tool responses use GCF format: symbols are @id kind qname score provenance, edges are @target<@source type, sections marked with ##. Tabular arrays use pipe-separated rows with field names declared once in the header (## name [count]{field1,field2,...}). A ^ in a row cell marks a nested value attached below as an indented .fieldname block (an object, or a [N]{fields} tabular array); the row takes an @id prefix. A nested value may reuse a schema declared in an earlier row, omitting the repeated {fields}. In a cell, - is null and ~ is absent (key not present)."
+		instructions += " Tool responses use GCF format: symbols are @id kind qname score provenance, edges are @target<@source type, sections marked with ##. Tabular arrays use pipe-separated rows with field names declared once in the header (## name [count]{field1,field2,...}). A quoted header column containing > is a flattened nested-object path: \"caller>name\" decodes to {caller:{name:...}}. A ^ in a row cell instead marks a variable-shape or array value attached below as an indented .fieldname block (a [N]{fields} tabular array); such rows take an @id prefix and a repeated {fields} schema may be omitted. In a cell, - is null and ~ is absent (key not present)."
 	}
 
 	var server *mcp.Server

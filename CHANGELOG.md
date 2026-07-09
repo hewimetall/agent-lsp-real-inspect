@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, Semantic Versioning.
 
+## [0.15.2] - 2026-07-08
+
+### Fixed
+- **GCF format primer** in MCP server instructions now accurately describes GCF spec v3.2 encoding. Added the nested-object flattening path syntax (`"caller>name"` → `{caller:{name:...}}`), corrected the null/missing tokens (`-` is null, `~` is absent), and documented the `^` attachment marker for variable-shape/array values. Ensures LLMs parse graph and generic profile responses correctly from the first tool call.
+
 ## [0.15.1] - 2026-06-24
 
 ### Fixed
