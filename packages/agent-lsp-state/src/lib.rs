@@ -580,10 +580,18 @@ mod tests {
                 .unwrap();
             store.set_active_workspace(&sid, &wid).unwrap();
             store
-                .bind_container(&sid, "c1", "agent-lsp/go:latest", "go", Some(3737), "container")
+                .bind_container(
+                    &sid,
+                    "c1",
+                    "agent-lsp/go:latest",
+                    "go",
+                    Some(3737),
+                    "container",
+                )
                 .unwrap();
             store.set_index_status(&sid, "warming").unwrap();
             store.set_index_status(&sid, "ready").unwrap();
+            store.set_language(&sid, "go").unwrap();
             let session = store.get_session(py, &sid).unwrap().unwrap();
             assert_eq!(
                 session
@@ -596,7 +604,22 @@ mod tests {
             );
             let containers = store.list_containers(py, &sid).unwrap();
             assert_eq!(containers.len(), 1);
+            let sessions = store.list_sessions(py).unwrap();
+            assert_eq!(sessions.len(), 1);
+            let ws = store.get_workspace(py, &wid).unwrap().unwrap();
+            assert!(ws.get_item("path").unwrap().unwrap().extract::<String>().is_ok());
+            let listed = store
+                .list_workspaces(py, Some("p1"), Some("active"))
+                .unwrap();
+            assert_eq!(listed.len(), 1);
+            let all = store.list_workspaces(py, None, None).unwrap();
+            assert_eq!(all.len(), 1);
+            // re-bind same container id
+            store
+                .bind_container(&sid, "c1", "img2", "go", Some(3738), "container")
+                .unwrap();
             store.mark_container_stopped("c1").unwrap();
+            store.mark_workspace_removed(&wid).unwrap();
             store.close_session(&sid).unwrap();
             let session = store.get_session(py, &sid).unwrap().unwrap();
             assert_eq!(
@@ -609,6 +632,39 @@ mod tests {
                 "closed"
             );
         });
+    }
+
+    #[test]
+    fn error_paths_and_fixed_workspace_id() {
+        let dir = tempdir().unwrap();
+        let store = StateStore::new(dir.path().join("s.db").to_str().unwrap()).unwrap();
+        let sid = store.create_session(None).unwrap();
+        assert!(store.set_active_workspace(&sid, "ghost").is_err());
+        assert!(store.set_index_status("missing", "ready").is_err());
+        assert!(store.set_language("missing", "go").is_err());
+        assert!(store.bind_container("missing", "c", "i", "go", None, "local").is_err());
+        assert!(store.mark_container_stopped("ghost").is_err());
+        assert!(store.mark_workspace_removed("ghost").is_err());
+        assert!(store.close_session("ghost").is_err());
+        let fixed = store
+            .create_workspace("p", "/named", Some("main"), Some("named-ws"))
+            .unwrap();
+        assert_eq!(fixed, "named-ws");
+        store.set_active_workspace(&sid, &fixed).unwrap();
+        Python::attach(|py| {
+            assert!(store.get_session(py, "nope").unwrap().is_none());
+            assert!(store.get_workspace(py, "nope").unwrap().is_none());
+            assert_eq!(store.list_containers(py, sid.as_str()).unwrap().len(), 0);
+        });
+    }
+
+    #[test]
+    fn open_db_fails_when_parent_is_file() {
+        let dir = tempdir().unwrap();
+        let blocker = dir.path().join("not-a-dir");
+        std::fs::write(&blocker, b"x").unwrap();
+        let db = blocker.join("sessions.db");
+        assert!(StateStore::new(db.to_str().unwrap()).is_err());
     }
 
     #[test]

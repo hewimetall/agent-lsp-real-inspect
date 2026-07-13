@@ -1,8 +1,8 @@
-# Lint / format / test helpers
+# Lint / format / test / coverage (median gates, py≠rust)
 
-RUST_CRATES := packages/agent-lsp-state packages/agent-lsp-git packages/agent-lsp-docker
+RUST_CRATES := . packages/agent-lsp-state packages/agent-lsp-git packages/agent-lsp-docker
 
-.PHONY: fmt lint test develop check
+.PHONY: fmt lint test develop check cov-py cov-rust cov
 
 develop:
 	@set -e; for d in $(RUST_CRATES); do \
@@ -26,4 +26,12 @@ lint:
 test:
 	pytest -q
 
-check: lint test
+cov-py:
+	./scripts/python-coverage.sh
+
+cov-rust:
+	./scripts/rust-coverage.sh
+
+cov: cov-py cov-rust
+
+check: lint test cov

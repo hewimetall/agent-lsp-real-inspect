@@ -107,3 +107,23 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<DockerService>()?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pyo3::types::{PyAnyMethods, PyModule};
+
+    #[test]
+    fn registers_docker_service() {
+        Python::attach(|py| {
+            let m = PyModule::new(py, "d").unwrap();
+            _native(&m).unwrap();
+            assert!(m.getattr("DockerService").is_ok());
+        });
+    }
+
+    #[test]
+    fn docker_service_new_may_fail_without_daemon() {
+        let _ = DockerService::new();
+    }
+}

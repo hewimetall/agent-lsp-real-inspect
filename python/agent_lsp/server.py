@@ -1,17 +1,24 @@
-"""FastMCP entrypoint — sessions, git worktrees, warm LSP, scout tools."""
+"""FastMCP entrypoint — TaskStore + sessions/worktrees + scout tools."""
 
 from __future__ import annotations
 
+import json
 import uuid
+from contextlib import suppress
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, cast
 
-from fastmcp import FastMCP
+from fastmcp import Context, FastMCP
+from fastmcp.dependencies import Progress
+from fastmcp.server.tasks import TaskConfig
 
 from agent_lsp import paths as paths_mod
 from agent_lsp.blast import blast_radius, blast_to_dict
 from agent_lsp.paths import ensure_data_dirs, project_bare_path, require_id, workspace_path
 from agent_lsp.runtime_hub import HUB
+from agent_lsp.task_bridge import await_sqlite_task
+from agent_lsp.worker import wake_worker
 
 mcp = FastMCP("agent-lsp")
 
@@ -19,6 +26,10 @@ _state: Any = None
 _git: Any = None
 _docker: Any = None
 _docker_error: str | None = None
+_tasks: Any = None
+
+# Long scout ops REQUIRE MCP task=True (SEP-1686) — ADR-0001 / ADR-0003.
+_SCOUT_TASK = TaskConfig(mode="required", poll_interval=timedelta(seconds=1))
 
 
 def get_state() -> Any:
@@ -38,6 +49,16 @@ def get_git() -> Any:
 
         _git = GitService()
     return _git
+
+
+def get_tasks() -> Any:
+    global _tasks
+    if _tasks is None:
+        from agent_lsp._tasks import TaskStore
+
+        ensure_data_dirs()
+        _tasks = TaskStore(str(paths_mod.STATE_DIR / "tasks.db"))
+    return _tasks
 
 
 def get_docker() -> Any | None:
@@ -82,9 +103,40 @@ def _client_for(session_id: str) -> Any | dict[str, Any]:
         return {
             "error": "runtime_not_ready",
             "session_id": session_id,
-            "hint": "call ensure_runtime then warm_index",
+            "hint": "call ensure_runtime then warm_index (with task=True)",
         }
     return rt.client
+
+
+def _task_row(row: object) -> dict[str, Any]:
+    return cast(dict[str, Any], dict(row))  # type: ignore[arg-type]
+
+
+async def _wait_queued_task(tid: str, progress: Progress) -> dict[str, Any]:
+    reporter: Progress | None = progress if getattr(progress, "_impl", None) is not None else None
+    if reporter is not None:
+        with suppress(Exception):
+            await reporter.set_total(3)
+            await reporter.set_message(f"task_id={tid} status=queued")
+    try:
+        row = await await_sqlite_task(get_tasks(), tid, reporter)
+        if reporter is not None:
+            with suppress(Exception):
+                await reporter.increment(3)
+        # Prefer structured artifact JSON when present.
+        art = row.get("artifact")
+        if row.get("status") == "done" and art:
+            with suppress(json.JSONDecodeError, TypeError):
+                parsed = json.loads(str(art))
+                if isinstance(parsed, dict):
+                    parsed["task_id"] = tid
+                    parsed["status"] = "done"
+                    return parsed
+        return row
+    except TimeoutError as exc:
+        with suppress(Exception):
+            get_tasks().update(tid, status="error", error=str(exc))
+        return {"error": "wait_timeout", "task_id": tid, "detail": str(exc)}
 
 
 # ── sessions ──────────────────────────────────────────────────────────────
@@ -141,27 +193,39 @@ def create_project(project_id: str) -> dict[str, Any]:
     return {"project_id": pid, "bare": path}
 
 
-@mcp.tool()
-def import_project(project_id: str, source: str) -> dict[str, Any]:
-    """Import real sources into a bare repo.
-
-    `source` is a local git path or a remote URL (https/git/file).
-    Uses gix — no git CLI.
-    """
+def enqueue_import_project(project_id: str, source: str) -> dict[str, Any]:
+    """Submit import_project into SQLite TaskStore and wake ScoutWorker."""
     ensure_data_dirs()
-    pid = require_id(project_id, "project_id")
+    try:
+        pid = require_id(project_id, "project_id")
+    except ValueError as exc:
+        return {"error": "invalid_id", "detail": str(exc)}
     bare = project_bare_path(pid)
     if bare.exists():
         return {"error": "project_exists", "project_id": pid}
-    src = Path(source)
-    try:
-        if src.exists():
-            path = get_git().import_local(str(src.resolve()), str(bare))
-        else:
-            path = get_git().clone_bare(source, str(bare))
-    except Exception as exc:  # noqa: BLE001
-        return {"error": "import_failed", "detail": str(exc)}
-    return {"project_id": pid, "bare": path, "source": source}
+    payload = json.dumps({"project_id": pid, "source": source})
+    tid = get_tasks().submit("", str(bare.parent), "import_project")
+    get_tasks().update(tid, artifact=payload)
+    wake_worker(get_tasks())
+    return {"task_id": tid, "status": "queued", "target": "import_project"}
+
+
+@mcp.tool(task=_SCOUT_TASK)
+async def import_project(
+    project_id: str,
+    source: str,
+    ctx: Context | None = None,
+    progress: Progress = Progress(),  # noqa: B008
+) -> dict[str, Any]:
+    """Import real sources into a bare repo (gix). Requires MCP task=True.
+
+    `source` is a local git path or a remote URL.
+    """
+    _ = ctx
+    queued = enqueue_import_project(project_id, source)
+    if "error" in queued:
+        return queued
+    return await _wait_queued_task(str(queued["task_id"]), progress)
 
 
 @mcp.tool()
@@ -215,81 +279,92 @@ def commit_workspace(
     return {"commit": cid, "workspace_id": ws["workspace_id"]}
 
 
-# ── runtime / index pipeline ───────────────────────────────────────────────
+# ── runtime / index pipeline (task-required) ───────────────────────────────
 
 
-@mcp.tool()
-def ensure_runtime(session_id: str, language: str, prefer_container: bool = True) -> dict[str, Any]:
-    """Start (or reuse) an LSP runtime held by the session.
-
-    Prefers a long-lived Docker container. Falls back to local subprocess when
-    Docker is unavailable — still bound into session state.
-    """
+def enqueue_ensure_runtime(
+    session_id: str, language: str, prefer_container: bool = True
+) -> dict[str, Any]:
     bound = _active_workspace(session_id)
     if isinstance(bound, dict):
         return bound
     _, ws = bound
-    workspace = Path(ws["path"])
-    docker = get_docker() if prefer_container else None
-    try:
-        if docker is not None:
-            rt = HUB.ensure_container(session_id, workspace, language, docker)
-        else:
-            rt = HUB.ensure_local(session_id, workspace, language)
-    except Exception as exc:  # noqa: BLE001
-        # Container failed → local fallback
-        if docker is not None:
-            try:
-                rt = HUB.ensure_local(session_id, workspace, language)
-            except Exception as exc2:  # noqa: BLE001
-                return {
-                    "error": "runtime_failed",
-                    "detail": str(exc2),
-                    "container_detail": str(exc),
-                }
-        else:
-            return {
-                "error": "runtime_failed",
-                "detail": str(exc),
-                "docker": _docker_error,
-            }
-
-    get_state().bind_container(
-        session_id,
-        rt.container_id or "unknown",
-        image=language,
-        language=language,
-        host_port=rt.host_port,
-        runtime_mode=rt.runtime_mode,
+    payload = json.dumps(
+        {"language": language, "prefer_container": prefer_container}
     )
-    get_state().set_index_status(session_id, "warming")
+    tid = get_tasks().submit(session_id, ws["path"], "ensure_runtime")
+    get_tasks().update(tid, artifact=payload)
+    wake_worker(get_tasks())
     return {
-        "session_id": session_id,
-        "language": language,
-        "runtime_mode": rt.runtime_mode,
-        "container_id": rt.container_id,
-        "host_port": rt.host_port,
-        "index_status": "warming",
+        "task_id": tid,
+        "status": "queued",
+        "target": "ensure_runtime",
+        "workspace": ws["path"],
     }
+
+
+@mcp.tool(task=_SCOUT_TASK)
+async def ensure_runtime(
+    session_id: str,
+    language: str,
+    prefer_container: bool = True,
+    ctx: Context | None = None,
+    progress: Progress = Progress(),  # noqa: B008
+) -> dict[str, Any]:
+    """Start LSP runtime held by the session. Requires MCP task=True."""
+    _ = ctx
+    queued = enqueue_ensure_runtime(session_id, language, prefer_container)
+    if "error" in queued:
+        return queued
+    return await _wait_queued_task(str(queued["task_id"]), progress)
+
+
+def enqueue_warm_index(session_id: str, timeout_seconds: float = 120.0) -> dict[str, Any]:
+    bound = _active_workspace(session_id)
+    if isinstance(bound, dict):
+        return bound
+    _, ws = bound
+    if HUB.get(session_id) is None:
+        return {
+            "error": "runtime_not_ready",
+            "session_id": session_id,
+            "hint": "call ensure_runtime first (task=True)",
+        }
+    payload = json.dumps({"timeout_seconds": timeout_seconds})
+    tid = get_tasks().submit(session_id, ws["path"], "warm_index")
+    get_tasks().update(tid, artifact=payload)
+    get_state().set_index_status(session_id, "warming")
+    wake_worker(get_tasks())
+    return {
+        "task_id": tid,
+        "status": "queued",
+        "target": "warm_index",
+        "workspace": ws["path"],
+    }
+
+
+@mcp.tool(task=_SCOUT_TASK)
+async def warm_index(
+    session_id: str,
+    timeout_seconds: float = 120.0,
+    ctx: Context | None = None,
+    progress: Progress = Progress(),  # noqa: B008
+) -> dict[str, Any]:
+    """Isolated index + cache warm pipeline. Requires MCP task=True."""
+    _ = ctx
+    queued = enqueue_warm_index(session_id, timeout_seconds)
+    if "error" in queued:
+        return queued
+    return await _wait_queued_task(str(queued["task_id"]), progress)
 
 
 @mcp.tool()
-def warm_index(session_id: str, timeout_seconds: float = 120.0) -> dict[str, Any]:
-    """Isolated index + cache warm pipeline for the session runtime."""
-    try:
-        rt = HUB.warm(session_id, timeout=timeout_seconds)
-    except Exception as exc:  # noqa: BLE001
-        get_state().set_index_status(session_id, "error")
-        return {"error": "warm_failed", "detail": str(exc)}
-    get_state().set_index_status(session_id, rt.index_status)
-    return {
-        "session_id": session_id,
-        "index_status": rt.index_status,
-        "indexed": True,
-        "language": rt.language,
-        "runtime_mode": rt.runtime_mode,
-        "error": rt.error,
-    }
+def get_task_status(task_id: str) -> dict[str, Any]:
+    """Inspect a SQLite scout task row (optional; tools already wait)."""
+    row = get_tasks().get(task_id)
+    if row is None:
+        return {"error": "not_found", "task_id": task_id}
+    return _task_row(row)
 
 
 # ── scout tools ────────────────────────────────────────────────────────────
@@ -342,7 +417,9 @@ def find_references(
         return client
     locs = client.references(file_path, line, column, include_declaration)
     return {
-        "references": [{"uri": loc.uri, "line": loc.line, "character": loc.character} for loc in locs],
+        "references": [
+            {"uri": loc.uri, "line": loc.line, "character": loc.character} for loc in locs
+        ],
         "indexed": client.is_workspace_loaded(),
     }
 

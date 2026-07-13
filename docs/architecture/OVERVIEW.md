@@ -3,56 +3,46 @@
 ```text
                  ┌──────────────────────────────┐
                  │     FastMCP (Python)         │
-                 │     agent-lsp core           │
-                 │  sessions · scout tools      │
-                 │  warm_index pipeline         │
+                 │  agent-lsp + TaskStore wait  │
+                 │  task=True REQUIRED (long)   │
                  └──────────────┬───────────────┘
         ┌───────────────────────┼────────────────────────┐
         ▼                       ▼                        ▼
 ┌───────────────┐      ┌───────────────┐       ┌────────────────┐
-│ agent-lsp-state│      │ agent-lsp-git │       │ agent-lsp-docker│
-│ sessions +     │      │ GitPort/gix   │       │ bollard         │
-│ containers     │      │ bare+worktree │       │ long-lived LSP  │
-│ (rusqlite)     │      │ clone/import  │       │ containers      │
+│ TaskStore     │      │ agent-lsp-git │       │ agent-lsp-docker│
+│ (rusqlite)    │      │ gix worktree  │       │ bollard         │
+│ ScoutWorker   │      │               │       │ session-held    │
 └───────────────┘      └───────────────┘       └────────────────┘
+        │
+        ▼
+┌───────────────┐
+│ agent-lsp-state│ sessions + container bindings
+└───────────────┘
 ```
 
-## What we kept from agent-lsp
+## Task pipeline (mandatory)
 
-- LSP orchestration for agents
-- **`blast_radius`** (signature tool)
-- Scout skills: impact / explore / onboard / refactor / safe-edit / verify
+Long tools use `TaskConfig(mode="required")`:
 
-## What we took from mcp-presentation
-
-- FastMCP + Rust/PyO3 packages
-- Sessions + workspaces (SQLite)
-- Git bare + **worktree** (real sources, no CLI)
-- Docker via **bollard** (no CLI) — containers **held by sessions**
-
-## What we threw away
-
-- Go monolith (66 low-level tools, daemon broker, GCF, phase engine)
-- npm / winget / goreleaser Go distribution
-- Speculative simulation session stack (can return later as a skill)
-
-## Happy path
+| Tool | Target | Notes |
+|------|--------|-------|
+| `import_project` | `import_project` | gix clone/import |
+| `ensure_runtime` | `ensure_runtime` | container or local LSP |
+| `warm_index` | `warm_index` | index + cache warm |
 
 ```text
-create_session
-  → import_project(project_id, url_or_path)   # real sources → bare
-  → checkout_workspace(session_id, project_id) # gix worktree
-  → ensure_runtime(session_id, language)       # container (or local fallback)
-  → warm_index(session_id)                     # isolated index + cache warm
-  → blast_radius / explore_symbol / …
-  → close_session                              # stop containers
+call_tool(..., task=True)
+  → TaskStore.submit → ScoutWorker.claim_next
+  → await_sqlite_task (+ Progress notifications)
+  → done | error
 ```
 
-## Index pipeline
+`get_task_status(task_id)` — optional SQLite inspection.
 
-`warm_index` is isolated per session:
+ADL/ADR: [`docs/adr/`](../adr/README.md)
 
-1. Runtime already bound (container or local)
-2. Wait for LSP `$/progress` end (best-effort)
-3. Seed `documentSymbol` + one `references` probe (cache warm)
-4. Persist `index_status=ready` in state
+## Coverage
+
+- **Python** and **Rust** are separate.
+- Gate = **median** line coverage ≥ **93%** (not mean).
+- `make cov-py` / `make cov-rust`

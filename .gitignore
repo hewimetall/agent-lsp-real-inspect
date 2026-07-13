@@ -30,3 +30,5 @@ cache/
 # env
 .env
 *.log
+coverage-*.json
+.libs/

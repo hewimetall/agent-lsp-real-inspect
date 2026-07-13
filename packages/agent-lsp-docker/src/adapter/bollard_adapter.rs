@@ -305,6 +305,8 @@ async fn start_persistent_async(
 mod tests {
     use super::*;
     use crate::port::ContainerError;
+    use bollard::container::LogOutput;
+    use bytes::Bytes;
 
     #[test]
     fn container_error_display() {
@@ -331,5 +333,36 @@ mod tests {
         assert_eq!(resolve_status_code(-1, None, Some(7)).unwrap(), 7);
         let err = resolve_status_code(-1, Some("boom".into()), None).unwrap_err();
         assert!(err.to_string().contains("wait: boom"));
+        assert_eq!(resolve_status_code(-1, None, None).unwrap(), -1);
+    }
+
+    #[test]
+    fn append_log_item_variants() {
+        let mut logs = String::new();
+        assert!(!append_log_item(
+            &mut logs,
+            Ok(LogOutput::StdOut {
+                message: Bytes::from_static(b"out")
+            })
+        ));
+        assert!(!append_log_item(
+            &mut logs,
+            Ok(LogOutput::StdErr {
+                message: Bytes::from_static(b"err")
+            })
+        ));
+        assert!(!append_log_item(
+            &mut logs,
+            Ok(LogOutput::Console {
+                message: Bytes::from_static(b"c")
+            })
+        ));
+        assert!(logs.contains("out") && logs.contains("err"));
+        let err = bollard::errors::Error::JsonDataError {
+            message: "bad".into(),
+            column: 0,
+        };
+        assert!(append_log_item(&mut logs, Err(err)));
+        assert!(logs.contains("log error"));
     }
 }

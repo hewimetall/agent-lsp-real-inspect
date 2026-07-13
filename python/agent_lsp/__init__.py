@@ -1,4 +1,4 @@
-"""agent-lsp — FastMCP scout server (sessions + worktrees + warm LSP)."""
+"""agent-lsp — FastMCP scout server (sessions + worktrees + warm LSP + tasks)."""
 
 from agent_lsp.server import main, mcp
 

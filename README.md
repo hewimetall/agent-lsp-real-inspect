@@ -1,81 +1,54 @@
 # agent-lsp
 
-Scout LSP MCP-сервер: **FastMCP + Rust/PyO3**.
+Scout LSP MCP-сервер: **FastMCP + Rust/PyO3** + **обязательный task support**.
 
-Упрощённый рерайт бывшего Go agent-lsp по стеку
-[mcp-presentation](https://github.com/hewimetall/mcp-presentation).
+Стек как в [mcp-presentation](https://github.com/hewimetall/mcp-presentation).
 
 ## Пакеты
 
 | Пакет | Роль |
 |-------|------|
-| **`agent-lsp`** | FastMCP server + scout tools + warm pipeline |
-| **`agent-lsp-state`** | sessions / workspaces / container bindings (rusqlite) |
-| **`agent-lsp-git`** | GitPort / **gix** — bare + worktree + clone |
-| **`agent-lsp-docker`** | ContainerRuntime / **bollard** — контейнеры в сессии |
+| **`agent-lsp`** | FastMCP + **TaskStore** + scout tools + ScoutWorker |
+| **`agent-lsp-state`** | sessions / workspaces / container bindings |
+| **`agent-lsp-git`** | gix bare + worktree + clone |
+| **`agent-lsp-docker`** | bollard — контейнеры в сессии |
 
-## Что умеет
+## Task support (обязательно)
 
-1. **LSP** — definition / hover / references / document symbols  
-2. **`blast_radius`** — фирменный blast (exports → callers, test/non-test)  
-3. **Scout skills** — impact, explore, onboard, refactor, safe-edit, verify  
-4. **Git worktree** — реальные исходники в `workspaces/` из bare `projects/`  
-5. **Pipeline** — `ensure_runtime` → `warm_index` (изоляция + прогрев кеша)  
-6. **Sessions hold containers** — long-lived LSP runtime на сессию  
+`import_project` / `ensure_runtime` / `warm_index` → `TaskConfig(mode="required")`.
+
+Клиент **должен** вызывать с `task=True`. Очередь — SQLite `state/tasks.db`,
+не Docket. Docs: [`docs/guide/tasks.md`](docs/guide/tasks.md) · ADL: [`docs/adr/`](docs/adr/README.md).
 
 ## Happy path
 
 ```text
 create_session
-  → import_project(project_id, source)          # URL или локальный git path
-  → checkout_workspace(session_id, project_id)  # gix worktree
-  → ensure_runtime(session_id, "go"|"python"|…)
-  → warm_index(session_id)
-  → blast_radius / explore_symbol / find_references
+  → import_project(..., task=True)
+  → checkout_workspace
+  → ensure_runtime(..., task=True)
+  → warm_index(..., task=True)
+  → blast_radius / explore_symbol
   → close_session
+```
+
+## Coverage
+
+Python ≠ Rust. Gate = **медиана ≥ 93%** (не среднее).
+
+```bash
+make cov-py
+make cov-rust
 ```
 
 ## Dev
 
 ```bash
 uv sync --extra dev
+maturin develop                              # TaskStore (core)
 (cd packages/agent-lsp-state && maturin develop)
 (cd packages/agent-lsp-git && maturin develop)
 (cd packages/agent-lsp-docker && maturin develop)
 pytest -q
+make cov
 ```
-
-```bash
-uv run agent-lsp
-```
-
-Env:
-
-| Var | Default |
-|-----|---------|
-| `AGENT_LSP_STATE` | `state` |
-| `AGENT_LSP_PROJECTS` | `projects` |
-| `AGENT_LSP_WORKSPACES` | `workspaces` |
-| `AGENT_LSP_CACHE` | `cache` |
-
-Cursor `mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "agent-lsp": {
-      "command": "uv",
-      "args": ["tool", "run", "--from", "/abs/path/to/agent-lsp", "agent-lsp"],
-      "env": {
-        "AGENT_LSP_STATE": "/abs/data/state",
-        "AGENT_LSP_PROJECTS": "/abs/data/projects",
-        "AGENT_LSP_WORKSPACES": "/abs/data/workspaces"
-      }
-    }
-  }
-}
-```
-
-## Архитектура
-
-→ [`docs/architecture/OVERVIEW.md`](docs/architecture/OVERVIEW.md) · ADR [`docs/adr/`](docs/adr/)
