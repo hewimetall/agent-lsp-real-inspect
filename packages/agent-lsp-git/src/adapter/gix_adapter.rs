@@ -309,13 +309,57 @@ fn write_file(path: &Path, content: impl AsRef<[u8]>) -> Result<(), GitError> {
     Ok(())
 }
 
+/// Reject tree entry names that could escape the worktree (e.g. `..`).
+fn is_safe_tree_entry_name(name: &str) -> bool {
+    if name.is_empty() || name == "." || name == ".." {
+        return false;
+    }
+    if name.contains('/') || name.contains('\\') || name.contains('\0') {
+        return false;
+    }
+    true
+}
+
+/// True if `path` stays under `root` after normalizing `.` / `..` components.
+fn path_contained_in(root: &Path, path: &Path) -> bool {
+    use std::path::Component;
+    fn normalize(p: &Path) -> Option<Vec<Component<'_>>> {
+        let mut out = Vec::new();
+        for c in p.components() {
+            match c {
+                Component::Prefix(_) | Component::RootDir => out.push(c),
+                Component::CurDir => {}
+                Component::ParentDir => match out.last() {
+                    Some(Component::Normal(_)) => {
+                        out.pop();
+                    }
+                    Some(Component::RootDir) | Some(Component::Prefix(_)) => return None,
+                    _ => out.push(c),
+                },
+                Component::Normal(_) => out.push(c),
+            }
+        }
+        Some(out)
+    }
+    match (normalize(root), normalize(path)) {
+        (Some(root_n), Some(path_n)) => path_n.starts_with(&root_n),
+        _ => false,
+    }
+}
+
 fn checkout_tree_to(
     repo: &gix::Repository,
     tree_id: gix::ObjectId,
     dest: &Path,
 ) -> Result<(), GitError> {
     // Recursively checkout tree entries as files/dirs (simple, no filters).
-    fn walk(repo: &gix::Repository, tree_id: gix::ObjectId, base: &Path) -> Result<(), GitError> {
+    // Every materialized path must stay under `dest` (hostile trees may use `..`).
+    fn walk(
+        repo: &gix::Repository,
+        tree_id: gix::ObjectId,
+        base: &Path,
+        root: &Path,
+    ) -> Result<(), GitError> {
         let tree = repo
             .find_object(tree_id)
             .map_err(|e| GitError::msg(e.to_string()))?
@@ -324,12 +368,23 @@ fn checkout_tree_to(
         for entry in tree.iter() {
             let entry = entry.map_err(|e| GitError::msg(e.to_string()))?;
             let name = entry.filename().to_string();
+            if !is_safe_tree_entry_name(&name) {
+                return Err(GitError::msg(format!(
+                    "tree entry escapes worktree: {name:?}"
+                )));
+            }
             let path = base.join(&name);
+            if !path_contained_in(root, &path) {
+                return Err(GitError::msg(format!(
+                    "checkout path escapes worktree: {}",
+                    path.display()
+                )));
+            }
             let mode = entry.mode();
             let oid = entry.oid().to_owned();
             if mode.is_tree() {
                 fs::create_dir_all(&path).map_err(|e| GitError::msg(e.to_string()))?;
-                walk(repo, oid, &path)?;
+                walk(repo, oid, &path, root)?;
             } else if mode.is_blob() || mode.is_executable() {
                 if let Some(parent) = path.parent() {
                     fs::create_dir_all(parent).map_err(|e| GitError::msg(e.to_string()))?;
@@ -354,7 +409,7 @@ fn checkout_tree_to(
         }
         Ok(())
     }
-    walk(repo, tree_id, dest)
+    walk(repo, tree_id, dest, dest)
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -622,6 +677,41 @@ mod tests {
             .add_worktree(&bare, &dir.path().join("wt-nest"), "main")
             .unwrap();
         assert_eq!(fs::read_to_string(wt2.join("a/b/c.txt")).unwrap(), "nested");
+    }
+
+    #[test]
+    fn checkout_rejects_parent_dir_tree_entry() {
+        let dir = tempdir().unwrap();
+        let git = GixGitAdapter::new();
+        let bare = git.init_bare(&dir.path().join("b.git")).unwrap();
+        let repo = gix::open(&bare).unwrap();
+        let blob = repo.write_blob(b"pwned").unwrap().detach();
+        let mut tree = gix::objs::Tree::empty();
+        tree.entries.push(gix::objs::tree::Entry {
+            mode: gix::objs::tree::EntryKind::Blob.into(),
+            filename: "..".into(),
+            oid: blob,
+        });
+        let tree_id = repo.write_object(&tree).unwrap().detach();
+        let dest = dir.path().join("wt-safe");
+        fs::create_dir_all(&dest).unwrap();
+        let err = checkout_tree_to(&repo, tree_id, &dest);
+        assert!(err.is_err(), "expected escape rejection, got {err:?}");
+        assert!(!dir.path().join("pwned").exists());
+        // Sibling of dest must not receive the blob either.
+        assert!(!dir.path().join("outside").exists());
+    }
+
+    #[test]
+    fn path_contained_in_normalizes_parent_dirs() {
+        let root = Path::new("/tmp/wt");
+        assert!(path_contained_in(root, Path::new("/tmp/wt/a.txt")));
+        assert!(path_contained_in(root, Path::new("/tmp/wt/sub/../a.txt")));
+        assert!(!path_contained_in(root, Path::new("/tmp/wt/../escape.txt")));
+        assert!(!is_safe_tree_entry_name(".."));
+        assert!(!is_safe_tree_entry_name("."));
+        assert!(!is_safe_tree_entry_name("a/b"));
+        assert!(is_safe_tree_entry_name("ok.txt"));
     }
 
     #[test]

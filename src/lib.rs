@@ -154,13 +154,56 @@ impl TaskStore {
         }
     }
 
+    /// Requeue tasks stuck in `running`.
+    ///
+    /// When ``older_than_secs`` is ``0``, all running tasks are requeued (worker boot).
+    /// Otherwise only rows with ``updated_at`` older than the cutoff are requeued.
+    #[pyo3(signature = (older_than_secs=0))]
+    fn reclaim_stale(&self, older_than_secs: u64) -> PyResult<u64> {
+        let ts = now_secs();
+        let conn = self.conn.lock();
+        let n = if older_than_secs == 0 {
+            conn.execute(
+                "UPDATE tasks SET status = 'queued', updated_at = ?1 WHERE status = 'running'",
+                params![ts],
+            )
+        } else {
+            let cutoff = ts.saturating_sub(older_than_secs as i64);
+            conn.execute(
+                "UPDATE tasks SET status = 'queued', updated_at = ?1
+                 WHERE status = 'running' AND updated_at < ?2",
+                params![ts, cutoff],
+            )
+        }
+        .map_err(|e| PyValueError::new_err(format!("reclaim_stale: {e}")))?;
+        Ok(n as u64)
+    }
+
     /// Atomically claim the oldest queued task → running.
-    fn claim_next<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyDict>>> {
+    ///
+    /// Before claiming, requeues ``running`` tasks whose ``updated_at`` is older than
+    /// ``stale_after_secs`` (default 30 minutes) so a crashed worker cannot strand work.
+    #[pyo3(signature = (stale_after_secs=1800))]
+    fn claim_next<'py>(
+        &self,
+        py: Python<'py>,
+        stale_after_secs: u64,
+    ) -> PyResult<Option<Bound<'py, PyDict>>> {
         let ts = now_secs();
         let conn = self.conn.lock();
         let tx = conn
             .unchecked_transaction()
             .map_err(|e| PyValueError::new_err(format!("tx: {e}")))?;
+
+        if stale_after_secs > 0 {
+            let cutoff = ts.saturating_sub(stale_after_secs as i64);
+            tx.execute(
+                "UPDATE tasks SET status = 'queued', updated_at = ?1
+                 WHERE status = 'running' AND updated_at < ?2",
+                params![ts, cutoff],
+            )
+            .map_err(|e| PyValueError::new_err(format!("claim reclaim: {e}")))?;
+        }
 
         let row = tx
             .query_row(
@@ -352,7 +395,7 @@ mod tests {
                 "queued"
             );
 
-            let claimed = store.claim_next(py).unwrap().unwrap();
+            let claimed = store.claim_next(py, 1800).unwrap().unwrap();
             assert_eq!(
                 claimed
                     .get_item("task_id")
@@ -362,7 +405,7 @@ mod tests {
                     .unwrap(),
                 tid
             );
-            assert!(store.claim_next(py).unwrap().is_none());
+            assert!(store.claim_next(py, 1800).unwrap().is_none());
 
             store
                 .update(
@@ -447,6 +490,53 @@ mod tests {
         let db = blocker.join("tasks.db");
         let err = TaskStore::new(db.to_str().unwrap());
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn reclaim_stale_requeues_running() {
+        let dir = tempdir().unwrap();
+        let db = dir.path().join("tasks.db");
+        Python::attach(|py| {
+            let store = TaskStore::new(db.to_str().unwrap()).unwrap();
+            let tid = store.submit("s", "ws", "warm_index", None).unwrap();
+            let _ = store.claim_next(py, 1800).unwrap().unwrap();
+            assert_eq!(
+                store
+                    .get(py, &tid)
+                    .unwrap()
+                    .unwrap()
+                    .get_item("status")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                "running"
+            );
+            let n = store.reclaim_stale(0).unwrap();
+            assert_eq!(n, 1);
+            assert_eq!(
+                store
+                    .get(py, &tid)
+                    .unwrap()
+                    .unwrap()
+                    .get_item("status")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                "queued"
+            );
+            let claimed = store.claim_next(py, 1800).unwrap().unwrap();
+            assert_eq!(
+                claimed
+                    .get_item("task_id")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                tid
+            );
+        });
     }
 
     #[test]

@@ -37,6 +37,11 @@ class ScoutWorker:
     def start_daemon(self) -> None:
         if self._thread is not None and self._thread.is_alive():
             return
+        # Single-worker: any leftover `running` rows are orphaned from a prior process.
+        try:
+            self._tasks.reclaim_stale(0)
+        except Exception:
+            logger.exception("reclaim_stale on boot failed")
         self._stop.clear()
         self._thread = threading.Thread(target=self._loop, name="agent-lsp-worker", daemon=True)
         self._thread.start()
@@ -130,15 +135,17 @@ class ScoutWorker:
             return
         _, ws = bound
         workspace = Path(ws["path"])
-        docker = server.get_docker() if prefer_container else None
-        if docker is not None:
+        # Keep a Docker handle even when prefer_container=False so replacing a
+        # prior container runtime can stop/remove the orphaned container.
+        docker = server.get_docker()
+        if prefer_container and docker is not None:
             try:
                 rt = HUB.ensure_container(session_id, workspace, language, docker)
             except Exception as exc:  # noqa: BLE001
-                rt = HUB.ensure_local(session_id, workspace, language)
+                rt = HUB.ensure_local(session_id, workspace, language, docker=docker)
                 self._tasks.update(tid, logs=f"container fallback: {exc}")
         else:
-            rt = HUB.ensure_local(session_id, workspace, language)
+            rt = HUB.ensure_local(session_id, workspace, language, docker=docker)
         server.get_state().bind_container(
             session_id,
             rt.container_id or "unknown",
@@ -170,15 +177,24 @@ class ScoutWorker:
             return
         rt = HUB.warm(session_id, timeout=timeout)
         server.get_state().set_index_status(session_id, rt.index_status)
+        indexed = rt.index_status == "ready"
         result = {
             "session_id": session_id,
             "index_status": rt.index_status,
-            "indexed": True,
+            "indexed": indexed,
             "language": rt.language,
             "runtime_mode": rt.runtime_mode,
             "error": rt.error,
         }
-        self._tasks.update(tid, status="done", artifact=json.dumps(result))
+        if indexed:
+            self._tasks.update(tid, status="done", artifact=json.dumps(result))
+        else:
+            self._tasks.update(
+                tid,
+                status="error",
+                artifact=json.dumps(result),
+                error=rt.error or "index warm failed",
+            )
 
 
 _worker: ScoutWorker | None = None

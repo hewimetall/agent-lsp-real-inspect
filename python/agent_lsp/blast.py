@@ -73,6 +73,7 @@ class BlastResult:
     symbols: list[BlastSymbol]
     changed_files: list[str]
     indexed: bool
+    skipped_files: list[str] = field(default_factory=list)
 
 
 def blast_radius(
@@ -84,13 +85,17 @@ def blast_radius(
 ) -> BlastResult:
     root = client.root
     symbols: list[SymbolInfo] = []
+    analyzed: list[str] = []
+    skipped: list[str] = []
     for rel in changed_files:
         try:
             full = resolve_under_root(root, rel)
-        except ValueError:
-            continue
+        except ValueError as exc:
+            raise ValueError(f"changed_files path escapes workspace: {rel}") from exc
         if not full.is_file():
+            skipped.append(rel)
             continue
+        analyzed.append(rel)
         for sym in client.document_symbols(full):
             if _looks_exported(sym, client.language_id):
                 symbols.append(sym)
@@ -152,14 +157,16 @@ def blast_radius(
 
     return BlastResult(
         symbols=results,
-        changed_files=changed_files,
+        changed_files=analyzed,
         indexed=client.is_workspace_loaded(),
+        skipped_files=skipped,
     )
 
 
 def blast_to_dict(result: BlastResult) -> dict[str, Any]:
     return {
         "changed_files": result.changed_files,
+        "skipped_files": result.skipped_files,
         "indexed": result.indexed,
         "symbols": [
             {

@@ -49,7 +49,15 @@ class RuntimeHub:
             prev = self.sessions.get(rt.session_id)
             self.sessions[rt.session_id] = rt
         if prev is not None and prev is not rt:
-            self._teardown(prev, docker=None)
+            docker = None
+            if prev.runtime_mode == "container":
+                try:
+                    from agent_lsp.server import get_docker
+
+                    docker = get_docker()
+                except Exception:
+                    docker = None
+            self._teardown(prev, docker=docker)
 
     def drop(self, session_id: str) -> SessionRuntime | None:
         with self._lock:
@@ -60,12 +68,27 @@ class RuntimeHub:
         session_id: str,
         workspace: Path,
         language: str,
+        docker: Any | None = None,
     ) -> SessionRuntime:
         existing = self.get(session_id)
-        if existing and existing.client and existing.language == language:
+        if (
+            existing
+            and existing.client
+            and existing.language == language
+            and existing.runtime_mode == "local"
+        ):
             return existing
         if existing is not None:
-            self.shutdown(session_id, docker=None)
+            # Always pass docker when replacing a container-backed runtime so stop/remove runs.
+            docker_svc = docker
+            if docker_svc is None and existing.runtime_mode == "container":
+                try:
+                    from agent_lsp.server import get_docker
+
+                    docker_svc = get_docker()
+                except Exception:
+                    docker_svc = None
+            self.shutdown(session_id, docker=docker_svc)
 
         spec = get_runtime(language)
         port = _free_port()
