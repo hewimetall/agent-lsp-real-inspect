@@ -52,3 +52,14 @@ maturin develop                              # TaskStore (core)
 pytest -q
 make cov
 ```
+
+## LSP container images
+
+Four languages from `agent_lsp.runtimes`: **go / python / typescript / rust**.
+
+```bash
+make docker-lsp
+# or: (cd infra/docker/lsp && ./build.sh)
+```
+
+See [`infra/docker/lsp/README.md`](infra/docker/lsp/README.md).

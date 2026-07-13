@@ -2,7 +2,7 @@
 
 RUST_CRATES := . packages/agent-lsp-state packages/agent-lsp-git packages/agent-lsp-docker
 
-.PHONY: fmt lint test develop check cov-py cov-rust cov
+.PHONY: fmt lint test develop check cov-py cov-rust cov docker-lsp
 
 develop:
 	@set -e; for d in $(RUST_CRATES); do \
@@ -10,6 +10,9 @@ develop:
 		(cd $$d && maturin develop); \
 	done
 	uv sync --extra dev
+
+docker-lsp:
+	$(MAKE) -C infra/docker/lsp all
 
 fmt:
 	ruff check --fix .
