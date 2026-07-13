@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import socket
 import subprocess
 import threading
@@ -12,6 +13,44 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
+
+
+def resolve_lsp_command(cmd: list[str]) -> list[str]:
+    """Resolve argv[0] to a real executable, bypassing rustup cwd toolchain shims.
+
+    Spawning ``rust-analyzer`` with ``cwd=<project>`` makes the rustup proxy pick the
+    project's (or rustup default) toolchain, which may not have the rust-analyzer
+    component. Resolve against ``AGENT_LSP_RUSTUP_TOOLCHAIN`` / ``stable`` instead.
+    """
+    if not cmd:
+        return cmd
+    exe = cmd[0]
+    path = Path(exe)
+    if path.is_file() and os.access(path, os.X_OK):
+        real = path.resolve()
+        if real.name != "rustup":
+            return cmd
+    name = path.name
+    toolchain = os.environ.get("AGENT_LSP_RUSTUP_TOOLCHAIN", "stable")
+    try:
+        resolved = subprocess.check_output(
+            ["rustup", "which", "--toolchain", toolchain, name],
+            text=True,
+            cwd="/",
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        if resolved and Path(resolved).is_file():
+            return [resolved, *cmd[1:]]
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    which = shutil.which(exe)
+    if which:
+        real = Path(which).resolve()
+        if real.name != "rustup":
+            return [which, *cmd[1:]]
+        # Last resort: pin rustup toolchain via env at spawn time (caller may set it).
+        return [which, *cmd[1:]]
+    return cmd
 
 
 def path_to_uri(path: str | Path) -> str:
@@ -163,11 +202,14 @@ class LspClient:
 
     @classmethod
     def spawn_local(cls, root: Path, language_id: str, cmd: list[str]) -> LspClient:
+        resolved = resolve_lsp_command(cmd)
+        # Discard stderr so a chatty language server cannot fill the PIPE and deadlock.
+        # Keep a DEVNULL handle (not None) so the child does not inherit the parent tty.
         proc = subprocess.Popen(
-            cmd,
+            resolved,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             cwd=str(root),
         )
         transport = StdioTransport(proc)

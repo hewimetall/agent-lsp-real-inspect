@@ -41,15 +41,23 @@ impl GitPort for GixGitAdapter {
         }
         let parsed = gix::Url::from_bytes(url.as_bytes().into())
             .map_err(|e| GitError::msg(format!("parse url: {e}")))?;
-        let mut prepare = gix::prepare_clone(parsed, bare_path)
-            .map_err(|e| GitError::msg(format!("prepare_clone: {e}")))?;
-        // fetch_only keeps a bare-like object store (no worktree checkout).
+        // Must use prepare_clone_bare — prepare_clone creates a non-bare layout
+        // (path/.git) which breaks project_bare_path / checkout_workspace.
+        let mut prepare = gix::prepare_clone_bare(parsed, bare_path)
+            .map_err(|e| GitError::msg(format!("prepare_clone_bare: {e}")))?;
         let (repo, _outcome) = prepare
             .fetch_only(gix::progress::Discard, &gix::interrupt::IS_INTERRUPTED)
             .map_err(|e| GitError::msg(format!("clone fetch: {e}")))?;
+        if !repo.is_bare() {
+            return Err(GitError::msg(format!(
+                "clone did not produce a bare repo at {}",
+                bare_path.display()
+            )));
+        }
         // Ensure HEAD points at a branch we can worktree from.
         ensure_head_branch(&repo)?;
-        Ok(repo.path().to_owned())
+        // Return the requested bare path (gix repo.path() equals it for bare).
+        Ok(bare_path.to_path_buf())
     }
 
     fn import_local(&self, src: &Path, bare_path: &Path) -> Result<PathBuf, GitError> {
@@ -717,5 +725,30 @@ mod tests {
     #[test]
     fn git_error_display() {
         assert_eq!(crate::port::GitError::msg("boom").to_string(), "boom");
+    }
+
+    #[test]
+    fn import_local_produces_true_bare_at_requested_path() {
+        let dir = tempdir().unwrap();
+        let git = GixGitAdapter::new();
+        let src_bare = git.init_bare(&dir.path().join("src.git")).unwrap();
+        let src_wt = git
+            .add_worktree(&src_bare, &dir.path().join("src-wt"), "main")
+            .unwrap();
+        fs::write(src_wt.join("hello.txt"), b"hi").unwrap();
+        git.commit(&src_wt, "seed", &["hello.txt".into()]).unwrap();
+
+        let dest = dir.path().join("imported.git");
+        let returned = git.import_local(&src_wt, &dest).unwrap();
+        assert_eq!(returned, dest);
+        assert!(dest.join("HEAD").is_file());
+        assert!(!dest.join(".git").exists());
+        let repo = gix::open(&dest).unwrap();
+        assert!(repo.is_bare());
+
+        let wt = git
+            .add_worktree(&dest, &dir.path().join("from-import"), "HEAD")
+            .unwrap();
+        assert_eq!(fs::read_to_string(wt.join("hello.txt")).unwrap(), "hi");
     }
 }

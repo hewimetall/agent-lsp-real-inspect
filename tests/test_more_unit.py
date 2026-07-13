@@ -15,7 +15,7 @@ from agent_lsp.blast import (
     blast_to_dict,
     is_test_file,
 )
-from agent_lsp.lsp_client import Location, LspClient, SymbolInfo, path_to_uri
+from agent_lsp.lsp_client import Location, LspClient, SymbolInfo, path_to_uri, resolve_lsp_command
 from agent_lsp.runtimes import get_runtime
 
 
@@ -24,6 +24,18 @@ def test_get_runtime_known() -> None:
     assert rt.language == "go"
     with pytest.raises(ValueError):
         get_runtime("cobol")
+
+
+def test_resolve_lsp_command_passthrough_and_rustup(tmp_path: Path) -> None:
+    assert resolve_lsp_command([]) == []
+    true_bin = "/usr/bin/true"
+    if Path(true_bin).is_file():
+        assert resolve_lsp_command([true_bin, "--help"])[0] == true_bin
+    # rust-analyzer should resolve to a real binary, not the rustup shim.
+    resolved = resolve_lsp_command(["rust-analyzer"])
+    assert resolved
+    assert Path(resolved[0]).is_file()
+    assert Path(resolved[0]).resolve().name != "rustup"
 
 
 def test_path_to_uri(tmp_path: Path) -> None:
