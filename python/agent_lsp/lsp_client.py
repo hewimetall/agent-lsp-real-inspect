@@ -356,10 +356,14 @@ class LspClient:
     def initialize(self) -> None:
         lsp_root = self.uri_root if self.uri_root is not None else self.root
         root_uri = path_to_uri(lsp_root)
+        # TCP-attached language servers (containers / remote) must not receive a
+        # host processId: pyright watches that PID and exits when it is absent
+        # from the server's PID namespace. Local stdio keeps os.getpid().
+        process_id = None if isinstance(self.transport, TcpTransport) else os.getpid()
         result = self.request(
             "initialize",
             {
-                "processId": os.getpid(),
+                "processId": process_id,
                 "rootUri": root_uri,
                 "rootPath": str(lsp_root),
                 "capabilities": {
