@@ -134,8 +134,13 @@ async def _wait_queued_task(tid: str, progress: Progress) -> dict[str, Any]:
                     return parsed
         return row
     except TimeoutError as exc:
-        with suppress(Exception):
-            get_tasks().update(tid, status="error", error=str(exc))
+        # Only mark error if the worker has not already finished.
+        from agent_lsp.task_bridge import TERMINAL
+
+        current = get_tasks().get(tid)
+        if current is not None and current.get("status") not in TERMINAL:
+            with suppress(Exception):
+                get_tasks().update(tid, status="error", error=str(exc))
         return {"error": "wait_timeout", "task_id": tid, "detail": str(exc)}
 
 
@@ -204,8 +209,7 @@ def enqueue_import_project(project_id: str, source: str) -> dict[str, Any]:
     if bare.exists():
         return {"error": "project_exists", "project_id": pid}
     payload = json.dumps({"project_id": pid, "source": source})
-    tid = get_tasks().submit("", str(bare.parent), "import_project")
-    get_tasks().update(tid, artifact=payload)
+    tid = get_tasks().submit("", str(bare.parent), "import_project", payload)
     wake_worker(get_tasks())
     return {"task_id": tid, "status": "queued", "target": "import_project"}
 
@@ -292,8 +296,7 @@ def enqueue_ensure_runtime(
     payload = json.dumps(
         {"language": language, "prefer_container": prefer_container}
     )
-    tid = get_tasks().submit(session_id, ws["path"], "ensure_runtime")
-    get_tasks().update(tid, artifact=payload)
+    tid = get_tasks().submit(session_id, ws["path"], "ensure_runtime", payload)
     wake_worker(get_tasks())
     return {
         "task_id": tid,
@@ -331,8 +334,7 @@ def enqueue_warm_index(session_id: str, timeout_seconds: float = 120.0) -> dict[
             "hint": "call ensure_runtime first (task=True)",
         }
     payload = json.dumps({"timeout_seconds": timeout_seconds})
-    tid = get_tasks().submit(session_id, ws["path"], "warm_index")
-    get_tasks().update(tid, artifact=payload)
+    tid = get_tasks().submit(session_id, ws["path"], "warm_index", payload)
     get_state().set_index_status(session_id, "warming")
     wake_worker(get_tasks())
     return {

@@ -1,4 +1,4 @@
-"""Path helpers for projects / workspaces / state."""
+"""Path helpers for projects / workspaces / state + containment."""
 
 from __future__ import annotations
 
@@ -31,3 +31,22 @@ def workspace_path(workspace_id: str) -> Path:
 def ensure_data_dirs() -> None:
     for d in (STATE_DIR, PROJECTS_DIR, WORKSPACES_DIR, CACHE_DIR):
         d.mkdir(parents=True, exist_ok=True)
+
+
+def resolve_under_root(root: Path, file_path: str | Path) -> Path:
+    """Resolve ``file_path`` and require it stays under ``root``.
+
+    Rejects absolute paths outside the root and ``..`` escapes.
+    """
+    root_resolved = root.resolve()
+    candidate = Path(file_path)
+    if not candidate.is_absolute():
+        candidate = root_resolved / candidate
+    resolved = candidate.resolve(strict=False)
+    try:
+        resolved.relative_to(root_resolved)
+    except ValueError as exc:
+        raise ValueError(
+            f"path escapes workspace root: {file_path!r} (root={root_resolved})"
+        ) from exc
+    return resolved

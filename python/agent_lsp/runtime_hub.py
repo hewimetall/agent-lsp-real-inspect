@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import socket
+import subprocess
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -29,6 +30,7 @@ class SessionRuntime:
     client: LspClient | None = None
     index_status: str = "cold"
     error: str | None = None
+    local_proc: subprocess.Popen[bytes] | None = None
 
 
 @dataclass
@@ -44,7 +46,10 @@ class RuntimeHub:
 
     def put(self, rt: SessionRuntime) -> None:
         with self._lock:
+            prev = self.sessions.get(rt.session_id)
             self.sessions[rt.session_id] = rt
+        if prev is not None and prev is not rt:
+            self._teardown(prev, docker=None)
 
     def drop(self, session_id: str) -> SessionRuntime | None:
         with self._lock:
@@ -59,16 +64,16 @@ class RuntimeHub:
         existing = self.get(session_id)
         if existing and existing.client and existing.language == language:
             return existing
+        if existing is not None:
+            self.shutdown(session_id, docker=None)
+
         spec = get_runtime(language)
-        # Prefer TCP listen when the local command template has {port}.
         port = _free_port()
         cmd = [c.replace("{port}", str(port)) for c in spec.local_cmd]
         if any("{port}" in c for c in spec.local_cmd):
-            # Start server separately then connect TCP — for gopls-style.
-            import subprocess
             import time
 
-            proc = subprocess.Popen(cmd, cwd=str(workspace))
+            proc: subprocess.Popen[bytes] = subprocess.Popen(cmd, cwd=str(workspace))
             client = None
             for _ in range(50):
                 try:
@@ -88,6 +93,7 @@ class RuntimeHub:
                 host_port=port,
                 client=client,
                 index_status="warming",
+                local_proc=proc,
             )
         else:
             client = LspClient.spawn_local(workspace, language, cmd)
@@ -100,8 +106,10 @@ class RuntimeHub:
                 host_port=None,
                 client=client,
                 index_status="warming",
+                local_proc=None,
             )
-        self.put(rt)
+        with self._lock:
+            self.sessions[session_id] = rt
         return rt
 
     def ensure_container(
@@ -120,6 +128,8 @@ class RuntimeHub:
             and existing.runtime_mode == "container"
         ):
             return existing
+        if existing is not None:
+            self.shutdown(session_id, docker=docker)
 
         spec: LanguageRuntime = get_runtime(language)
         image = image_override or spec.image
@@ -169,7 +179,8 @@ class RuntimeHub:
             client=client,
             index_status="warming",
         )
-        self.put(rt)
+        with self._lock:
+            self.sessions[session_id] = rt
         return rt
 
     def warm(self, session_id: str, timeout: float = 120.0) -> SessionRuntime:
@@ -177,31 +188,50 @@ class RuntimeHub:
         if rt is None or rt.client is None:
             raise RuntimeError(f"no runtime for session {session_id}")
         rt.index_status = "warming"
+        rt.error = None
         ready = rt.client.wait_until_ready(timeout=timeout)
-        # Probe: open a seed file if any source exists.
         seed = _find_seed_file(rt.workspace_path, rt.language)
+        probed = False
         if seed is not None:
             try:
                 syms = rt.client.document_symbols(seed)
                 if syms:
                     rt.client.references(syms[0].file, syms[0].line, syms[0].character)
+                probed = True
             except Exception as exc:  # noqa: BLE001
                 rt.error = str(exc)
-        rt.index_status = "ready" if ready or seed is not None else "ready"
-        # Mark loaded for tools even if server never emitted $/progress.
-        rt.client._workspace_loaded = True
-        self.put(rt)
+        if ready or probed:
+            rt.index_status = "ready"
+            rt.client._workspace_loaded = True
+        else:
+            rt.index_status = "error"
+            if not rt.error:
+                rt.error = "index warm timed out with no seed file"
+        with self._lock:
+            self.sessions[session_id] = rt
         return rt
 
     def shutdown(self, session_id: str, docker: Any | None = None) -> None:
         rt = self.drop(session_id)
         if rt is None:
             return
+        self._teardown(rt, docker=docker)
+
+    def _teardown(self, rt: SessionRuntime, docker: Any | None) -> None:
         if rt.client is not None:
             try:
                 rt.client.shutdown()
             except Exception:
                 pass
+        if rt.local_proc is not None:
+            try:
+                rt.local_proc.terminate()
+                rt.local_proc.wait(timeout=5)
+            except Exception:
+                try:
+                    rt.local_proc.kill()
+                except Exception:
+                    pass
         if rt.runtime_mode == "container" and rt.container_id and docker is not None:
             try:
                 docker.stop(rt.container_id)
@@ -218,7 +248,6 @@ def _find_seed_file(root: Path, language: str) -> Path | None:
         "rust": ["**/*.rs"],
     }
     for pattern in patterns.get(language, ["**/*"]):
-        # pathlib doesn't support brace expand — split manually
         if "{ts,tsx}" in pattern:
             cands = list(root.glob("**/*.ts")) + list(root.glob("**/*.tsx"))
         else:

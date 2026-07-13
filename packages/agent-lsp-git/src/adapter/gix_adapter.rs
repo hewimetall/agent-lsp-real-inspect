@@ -92,8 +92,8 @@ impl GitPort for GixGitAdapter {
         let wt_git_dir = bare.join("worktrees").join(name);
         fs::create_dir_all(&wt_git_dir).map_err(|e| GitError::msg(e.to_string()))?;
 
-        // Resolve ref → object id (default refs/heads/main via HEAD)
-        let branch_ref = normalize_branch_ref(ref_name);
+        // Resolve ref → object id (follow real HEAD when asked for HEAD).
+        let branch_ref = resolve_branch_ref(&repo, ref_name)?;
         let mut head = repo
             .find_reference(&branch_ref)
             .or_else(|_| repo.find_reference("HEAD"))
@@ -140,41 +140,57 @@ impl GitPort for GixGitAdapter {
         let repo =
             gix::open(worktree_path).map_err(|e| GitError::msg(format!("open worktree: {e}")))?;
 
-        // For v1: if paths empty, commit is a no-op message commit on current tree;
-        // otherwise require files exist and rebuild tree from worktree files listed.
         if paths.is_empty() {
             return Err(GitError::msg(
                 "commit requires at least one path in v1 (stage explicit paths)",
             ));
         }
 
+        let abs_wt = worktree_path
+            .canonicalize()
+            .map_err(|e| GitError::msg(format!("canonicalize worktree: {e}")))?;
+
+        let mut safe_paths: Vec<(String, PathBuf)> = Vec::new();
         for p in paths {
-            let full = worktree_path.join(p);
-            if !full.is_file() {
+            let rel = p.replace('\\', "/");
+            if Path::new(&rel).is_absolute() || rel.split('/').any(|c| c == "..") {
+                return Err(GitError::msg(format!("path escapes worktree: {p}")));
+            }
+            let full = abs_wt.join(&rel);
+            let canon = full
+                .canonicalize()
+                .map_err(|e| GitError::msg(format!("canonicalize {p}: {e}")))?;
+            if !canon.starts_with(&abs_wt) {
+                return Err(GitError::msg(format!("path escapes worktree: {p}")));
+            }
+            if !canon.is_file() {
                 return Err(GitError::msg(format!("missing file for commit: {p}")));
+            }
+            safe_paths.push((rel, canon));
+        }
+
+        // Start from existing HEAD tree (merge), then overlay listed paths.
+        let mut root = Node::default();
+        if let Ok(head) = repo.head_id() {
+            if let Ok(obj) = repo.find_object(head.detach()) {
+                if let Ok(commit) = obj.peel_to_commit() {
+                    if let Ok(tree_id) = commit.tree_id() {
+                        load_tree_into_node(&repo, tree_id.detach(), &mut root)?;
+                    }
+                }
             }
         }
 
-        // Build a simple tree from listed files (flat paths only in v1)
-        let mut entries: Vec<(String, gix::ObjectId)> = Vec::new();
-        for p in paths {
-            let bytes =
-                fs::read(worktree_path.join(p)).map_err(|e| GitError::msg(e.to_string()))?;
+        for (rel, canon) in &safe_paths {
+            let bytes = fs::read(canon).map_err(|e| GitError::msg(e.to_string()))?;
             let blob_id = repo
                 .write_blob(&bytes)
                 .map_err(|e| GitError::msg(format!("write blob: {e}")))?
                 .detach();
-            let name = Path::new(p)
-                .file_name()
-                .and_then(|s| s.to_str())
-                .ok_or_else(|| GitError::msg("bad path"))?
-                .to_string();
-            // Keep relative path components for nested files
-            entries.push((p.replace('\\', "/"), blob_id));
-            let _ = name;
+            upsert_path(&mut root, rel, blob_id);
         }
 
-        let tree_id = write_flat_tree(&repo, &entries)?;
+        let tree_id = write_node(&repo, &root)?;
         let author = gix::actor::Signature {
             name: "agent-lsp-git".into(),
             email: "agent-lsp-git@localhost".into(),
@@ -204,6 +220,25 @@ impl GitPort for GixGitAdapter {
 
         Ok(commit_id.to_string())
     }
+}
+
+fn resolve_branch_ref(repo: &gix::Repository, ref_name: &str) -> Result<String, GitError> {
+    if ref_name != "HEAD" && !ref_name.is_empty() {
+        return Ok(normalize_branch_ref(ref_name));
+    }
+    // Follow symbolic HEAD when present (main/master/…).
+    if let Ok(head) = repo.head() {
+        if let Some(name) = head.referent_name() {
+            return Ok(name.as_bstr().to_string());
+        }
+    }
+    if repo.find_reference("refs/heads/main").is_ok() {
+        return Ok("refs/heads/main".to_string());
+    }
+    if repo.find_reference("refs/heads/master").is_ok() {
+        return Ok("refs/heads/master".to_string());
+    }
+    Ok("refs/heads/main".to_string())
 }
 
 fn normalize_branch_ref(ref_name: &str) -> String {
@@ -322,57 +357,83 @@ fn checkout_tree_to(
     walk(repo, tree_id, dest)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn write_flat_tree(
     repo: &gix::Repository,
     entries: &[(String, gix::ObjectId)],
 ) -> Result<gix::ObjectId, GitError> {
-    // Nested path support: build tree recursively from path components.
-    use std::collections::BTreeMap;
-
-    #[derive(Default)]
-    struct Node {
-        files: BTreeMap<String, gix::ObjectId>,
-        dirs: BTreeMap<String, Node>,
-    }
-
     let mut root = Node::default();
     for (path, oid) in entries {
-        let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
-        if parts.is_empty() {
-            continue;
-        }
-        let mut node = &mut root;
-        for part in &parts[..parts.len() - 1] {
-            node = node.dirs.entry((*part).to_string()).or_default();
-        }
-        node.files.insert(parts[parts.len() - 1].to_string(), *oid);
+        upsert_path(&mut root, path, *oid);
     }
-
-    fn write_node(repo: &gix::Repository, node: &Node) -> Result<gix::ObjectId, GitError> {
-        let mut tree = gix::objs::Tree::empty();
-        for (name, oid) in &node.files {
-            tree.entries.push(gix::objs::tree::Entry {
-                mode: gix::objs::tree::EntryKind::Blob.into(),
-                filename: name.as_str().into(),
-                oid: *oid,
-            });
-        }
-        for (name, child) in &node.dirs {
-            let child_id = write_node(repo, child)?;
-            tree.entries.push(gix::objs::tree::Entry {
-                mode: gix::objs::tree::EntryKind::Tree.into(),
-                filename: name.as_str().into(),
-                oid: child_id,
-            });
-        }
-        tree.entries.sort_by(|a, b| a.filename.cmp(&b.filename));
-        Ok(repo
-            .write_object(&tree)
-            .map_err(|e| GitError::msg(format!("write tree: {e}")))?
-            .detach())
-    }
-
     write_node(repo, &root)
+}
+
+#[derive(Default)]
+struct Node {
+    files: std::collections::BTreeMap<String, gix::ObjectId>,
+    dirs: std::collections::BTreeMap<String, Node>,
+}
+
+fn upsert_path(root: &mut Node, path: &str, oid: gix::ObjectId) {
+    let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
+    if parts.is_empty() {
+        return;
+    }
+    let mut node = root;
+    for part in &parts[..parts.len() - 1] {
+        node = node.dirs.entry((*part).to_string()).or_default();
+    }
+    node.files.insert(parts[parts.len() - 1].to_string(), oid);
+}
+
+fn load_tree_into_node(
+    repo: &gix::Repository,
+    tree_id: gix::ObjectId,
+    node: &mut Node,
+) -> Result<(), GitError> {
+    let tree = repo
+        .find_object(tree_id)
+        .map_err(|e| GitError::msg(e.to_string()))?
+        .peel_to_tree()
+        .map_err(|e| GitError::msg(e.to_string()))?;
+    for entry in tree.iter() {
+        let entry = entry.map_err(|e| GitError::msg(e.to_string()))?;
+        let name = entry.filename().to_string();
+        let oid = entry.oid().to_owned();
+        let mode = entry.mode();
+        if mode.is_tree() {
+            let child = node.dirs.entry(name).or_default();
+            load_tree_into_node(repo, oid, child)?;
+        } else if mode.is_blob() || mode.is_executable() {
+            node.files.insert(name, oid);
+        }
+    }
+    Ok(())
+}
+
+fn write_node(repo: &gix::Repository, node: &Node) -> Result<gix::ObjectId, GitError> {
+    let mut tree = gix::objs::Tree::empty();
+    for (name, oid) in &node.files {
+        tree.entries.push(gix::objs::tree::Entry {
+            mode: gix::objs::tree::EntryKind::Blob.into(),
+            filename: name.as_str().into(),
+            oid: *oid,
+        });
+    }
+    for (name, child) in &node.dirs {
+        let child_id = write_node(repo, child)?;
+        tree.entries.push(gix::objs::tree::Entry {
+            mode: gix::objs::tree::EntryKind::Tree.into(),
+            filename: name.as_str().into(),
+            oid: child_id,
+        });
+    }
+    tree.entries.sort_by(|a, b| a.filename.cmp(&b.filename));
+    Ok(repo
+        .write_object(&tree)
+        .map_err(|e| GitError::msg(format!("write tree: {e}")))?
+        .detach())
 }
 
 #[cfg(test)]
@@ -426,6 +487,32 @@ mod tests {
         fs::create_dir_all(&wt).unwrap();
         fs::write(wt.join("x"), b"1").unwrap();
         assert!(git.add_worktree(&bare, &wt, "main").is_err());
+    }
+
+    #[test]
+    fn commit_merges_existing_tree_and_rejects_escape() {
+        let dir = tempdir().unwrap();
+        let git = GixGitAdapter::new();
+        let bare = git.init_bare(&dir.path().join("b.git")).unwrap();
+        let wt = git
+            .add_worktree(&bare, &dir.path().join("wt"), "main")
+            .unwrap();
+        fs::write(wt.join("a.txt"), b"a").unwrap();
+        git.commit(&wt, "a", &["a.txt".into()]).unwrap();
+        fs::write(wt.join("b.txt"), b"b").unwrap();
+        git.commit(&wt, "b", &["b.txt".into()]).unwrap();
+        let wt2 = git
+            .add_worktree(&bare, &dir.path().join("wt2"), "main")
+            .unwrap();
+        assert!(wt2.join("a.txt").is_file());
+        assert!(wt2.join("b.txt").is_file());
+
+        assert!(git
+            .commit(&wt, "evil", &["../outside.txt".into()])
+            .is_err());
+        assert!(git
+            .commit(&wt, "evil", &["/etc/passwd".into()])
+            .is_err());
     }
 
     #[test]

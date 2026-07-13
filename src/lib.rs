@@ -68,16 +68,24 @@ impl TaskStore {
     }
 
     /// Insert a queued task; returns task_id.
-    fn submit(&self, session_id: &str, workspace: &str, target: &str) -> PyResult<String> {
+    /// Optional ``artifact`` is written atomically with the insert (avoids race with claim).
+    #[pyo3(signature = (session_id, workspace, target, artifact=None))]
+    fn submit(
+        &self,
+        session_id: &str,
+        workspace: &str,
+        target: &str,
+        artifact: Option<&str>,
+    ) -> PyResult<String> {
         let tid = Uuid::new_v4().to_string();
         let ts = now_secs();
         let conn = self.conn.lock();
         conn.execute(
             "INSERT INTO tasks(
-                task_id, session_id, workspace, target, status,
+                task_id, session_id, workspace, target, status, artifact,
                 created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, 'queued', ?5, ?5)",
-            params![tid, session_id, workspace, target, ts],
+             ) VALUES (?1, ?2, ?3, ?4, 'queued', ?5, ?6, ?6)",
+            params![tid, session_id, workspace, target, artifact, ts],
         )
         .map_err(|e| PyValueError::new_err(format!("submit: {e}")))?;
         Ok(tid)
@@ -331,7 +339,9 @@ mod tests {
         let db = dir.path().join("tasks.db");
         Python::attach(|py| {
             let store = TaskStore::new(db.to_str().unwrap()).unwrap();
-            let tid = store.submit("s1", "ws/a", "warm_index").unwrap();
+            let tid = store
+                .submit("s1", "ws/a", "warm_index", Some(r#"{"t":1}"#))
+                .unwrap();
             let row = store.get(py, &tid).unwrap().unwrap();
             assert_eq!(
                 row.get_item("status")
@@ -410,7 +420,7 @@ mod tests {
         let db = dir.path().join("t.db");
         Python::attach(|py| {
             let store = TaskStore::new(db.to_str().unwrap()).unwrap();
-            let tid = store.submit("s", "ws", "ensure_runtime").unwrap();
+            let tid = store.submit("s", "ws", "ensure_runtime", None).unwrap();
             store
                 .update(&tid, Some("done"), Some("{}"), None, Some(""))
                 .unwrap();

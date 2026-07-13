@@ -10,8 +10,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 from agent_lsp.lsp_client import LspClient, SymbolInfo
+from agent_lsp.paths import resolve_under_root
 
 
 def is_test_file(path: str) -> bool:
@@ -26,17 +28,27 @@ def is_test_file(path: str) -> bool:
     return False
 
 
+def uri_to_path(uri: str) -> str:
+    """Decode file:// URI to a filesystem path."""
+    if uri.startswith("file://"):
+        parsed = urlparse(uri)
+        return unquote(parsed.path)
+    return unquote(uri)
+
+
 # LSP SymbolKind: 5=class, 6=method, 12=function, 13=variable, 14=constant, ...
 _EXPORTED_KINDS = {5, 6, 10, 11, 12, 13, 14, 23, 26}
 
 
 def _looks_exported(sym: SymbolInfo, language: str) -> bool:
     name = sym.name.rsplit(".", 1)[-1]
+    if not name:
+        return False
     if language in {"go", "rust"}:
-        return bool(name) and name[0].isupper()
+        return name[0].isupper()
     if name.startswith("_"):
         return False
-    return sym.kind in _EXPORTED_KINDS or True
+    return sym.kind in _EXPORTED_KINDS
 
 
 @dataclass
@@ -73,8 +85,10 @@ def blast_radius(
     root = client.root
     symbols: list[SymbolInfo] = []
     for rel in changed_files:
-        path = Path(rel)
-        full = path if path.is_absolute() else root / path
+        try:
+            full = resolve_under_root(root, rel)
+        except ValueError:
+            continue
         if not full.is_file():
             continue
         for sym in client.document_symbols(full):
@@ -98,12 +112,11 @@ def blast_radius(
             item.warning = str(exc)
             return item
         for loc in locs:
-            file_path = loc.uri.removeprefix("file://")
+            file_path = uri_to_path(loc.uri)
             ref = CallerRef(file=file_path, line=loc.line, character=loc.character)
             if is_test_file(file_path):
                 item.test_callers.append(ref)
             else:
-                # skip self declaration-ish same line
                 if file_path == sym.file and loc.line == sym.line:
                     continue
                 item.non_test_callers.append(ref)
@@ -115,17 +128,18 @@ def blast_radius(
             results.append(fut.result())
 
     if include_transitive:
-        # One extra hop for non-test callers (best-effort).
         extra: list[BlastSymbol] = []
         for item in list(results):
             for caller in item.non_test_callers[:16]:
                 try:
-                    # Use caller's position as a symbol probe via hover name if available.
                     hover = client.hover(caller.file, caller.line, caller.character)
-                    name = hover.split("\n", 1)[0][:80] or f"{Path(caller.file).name}:{caller.line}"
+                    name = (
+                        hover.split("\n", 1)[0][:80]
+                        or f"{Path(caller.file).name}:{caller.line}"
+                    )
                     hop = BlastSymbol(name=f"→{name}", file=caller.file, line=caller.line)
                     for loc in client.references(caller.file, caller.line, caller.character):
-                        fp = loc.uri.removeprefix("file://")
+                        fp = uri_to_path(loc.uri)
                         ref = CallerRef(file=fp, line=loc.line, character=loc.character)
                         if is_test_file(fp):
                             hop.test_callers.append(ref)

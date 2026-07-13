@@ -270,9 +270,9 @@ class LspClient:
         return self._workspace_loaded
 
     def open_document(self, file_path: str | Path) -> str:
-        path = Path(file_path)
-        if not path.is_absolute():
-            path = self.root / path
+        from agent_lsp.paths import resolve_under_root
+
+        path = resolve_under_root(self.root, file_path)
         uri = path_to_uri(path)
         text = path.read_text(encoding="utf-8", errors="replace")
         version = self._open_docs.get(uri, 0) + 1
@@ -300,19 +300,35 @@ class LspClient:
         return uri
 
     def document_symbols(self, file_path: str | Path) -> list[SymbolInfo]:
+        from agent_lsp.paths import resolve_under_root
+
         uri = self.open_document(file_path)
         result = self.request(
             "textDocument/documentSymbol",
             {"textDocument": {"uri": uri}},
         )
         out: list[SymbolInfo] = []
-        path = str(Path(file_path) if Path(file_path).is_absolute() else self.root / file_path)
+        path = str(resolve_under_root(self.root, file_path))
 
         def walk(nodes: list[Any], prefix: str = "") -> None:
             for n in nodes or []:
                 name = n.get("name") or ""
-                full = f"{prefix}{name}" if not prefix else f"{prefix}.{name}"
                 kind = int(n.get("kind") or 0)
+                # DocumentSymbol (hierarchical) vs SymbolInformation (flat).
+                if "location" in n and "range" not in n and "selectionRange" not in n:
+                    loc = n["location"]
+                    rng = (loc.get("range") or {}).get("start") or {}
+                    out.append(
+                        SymbolInfo(
+                            name=name,
+                            kind=kind,
+                            line=int(rng.get("line", 0)) + 1,
+                            character=int(rng.get("character", 0)) + 1,
+                            file=path,
+                        )
+                    )
+                    continue
+                full = f"{prefix}{name}" if not prefix else f"{prefix}.{name}"
                 sel = n.get("selectionRange") or n.get("range") or {}
                 start = sel.get("start") or {}
                 out.append(
@@ -326,19 +342,6 @@ class LspClient:
                 )
                 if "children" in n:
                     walk(n.get("children") or [], full)
-                # SymbolInformation form
-                if "location" in n:
-                    loc = n["location"]
-                    rng = loc.get("range", {}).get("start", {})
-                    out.append(
-                        SymbolInfo(
-                            name=name,
-                            kind=kind,
-                            line=int(rng.get("line", 0)) + 1,
-                            character=int(rng.get("character", 0)) + 1,
-                            file=path,
-                        )
-                    )
 
         if isinstance(result, list):
             walk(result)
