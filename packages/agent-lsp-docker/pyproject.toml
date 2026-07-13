@@ -1,0 +1,19 @@
+[build-system]
+requires = ["maturin>=1.8,<2"]
+build-backend = "maturin"
+
+[project]
+name = "agent-lsp-docker"
+version = "0.1.0"
+description = "ContainerRuntime via bollard — long-lived session containers, no docker CLI"
+requires-python = ">=3.12"
+readme = "README.md"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.maturin]
+features = ["extension-module"]
+python-source = "python"
+module-name = "agent_lsp_docker._native"

@@ -1,0 +1,105 @@
+[build-system]
+requires = ["maturin>=1.8,<2"]
+build-backend = "maturin"
+
+[project]
+name = "agent-lsp"
+version = "0.1.0"
+description = "Scout LSP MCP — FastMCP + Rust/PyO3 (tasks, sessions, worktrees, blast_radius)"
+requires-python = ">=3.12"
+readme = "README.md"
+dependencies = [
+    "fastmcp[tasks]>=2.0",
+    "pydantic>=2.12",
+    "agent-lsp-state",
+    "agent-lsp-git",
+    "agent-lsp-docker",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=6",
+    "ruff>=0.12",
+    "mypy>=1.16",
+    "maturin>=1.8,<2",
+]
+
+[project.scripts]
+agent-lsp = "agent_lsp.server:main"
+
+[tool.maturin]
+features = ["extension-module"]
+python-source = "python"
+module-name = "agent_lsp._tasks"
+
+[tool.uv]
+package = true
+
+[tool.uv.workspace]
+members = [
+    ".",
+    "packages/agent-lsp-state",
+    "packages/agent-lsp-git",
+    "packages/agent-lsp-docker",
+]
+
+[tool.uv.sources]
+agent-lsp-state = { workspace = true }
+agent-lsp-git = { workspace = true }
+agent-lsp-docker = { workspace = true }
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["python", "tests", "packages"]
+extend-exclude = ["target", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["agent_lsp", "agent_lsp_state", "agent_lsp_git", "agent_lsp_docker"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "python:packages/agent-lsp-state/python:packages/agent-lsp-git/python:packages/agent-lsp-docker/python"
+packages = ["agent_lsp", "agent_lsp_state", "agent_lsp_git", "agent_lsp_docker"]
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "agent_lsp._tasks",
+    "agent_lsp_state._native",
+    "agent_lsp_git._native",
+    "agent_lsp_docker._native",
+    "fastmcp.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+markers = [
+    "docker: tests that need a Docker daemon",
+]
+addopts = ["-q"]
+pythonpath = ["python"]
+
+[tool.coverage.run]
+branch = false
+source = ["agent_lsp"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]
+show_missing = true
+skip_covered = false
