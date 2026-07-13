@@ -142,7 +142,10 @@ class StdioTransport(_Transport):
 class TcpTransport(_Transport):
     def __init__(self, host: str, port: int, timeout: float = 30.0) -> None:
         self.sock = socket.create_connection((host, port), timeout=timeout)
-        self.sock.settimeout(timeout)
+        # Connect uses `timeout`, but the reader must block indefinitely: pyright
+        # (and others) go quiet after initialize, and a short socket timeout kills
+        # the reader thread so later warm_index requests hang until request timeout.
+        self.sock.settimeout(None)
         self._rfile = self.sock.makefile("rb")
         self._lock = threading.Lock()
 
@@ -182,6 +185,9 @@ class LspClient:
     root: Path
     language_id: str
     transport: _Transport
+    # When the LSP runs in a container, host `root` is bind-mounted at `uri_root`
+    # (e.g. /workspace). All LSP URIs must use the container path; file IO stays on host.
+    uri_root: Path | None = None
     _next_id: int = 1
     _pending: dict[int, dict[str, Any] | None] = field(default_factory=dict)
     _reader: threading.Thread | None = None
@@ -192,9 +198,19 @@ class LspClient:
     _cond: threading.Condition = field(default_factory=threading.Condition)
 
     @classmethod
-    def connect_tcp(cls, root: Path, language_id: str, host: str, port: int) -> LspClient:
+    def connect_tcp(
+        cls,
+        root: Path,
+        language_id: str,
+        host: str,
+        port: int,
+        *,
+        uri_root: Path | None = None,
+    ) -> LspClient:
         transport = TcpTransport(host, port)
-        client = cls(root=root, language_id=language_id, transport=transport)
+        client = cls(
+            root=root, language_id=language_id, transport=transport, uri_root=uri_root
+        )
         client._start_reader()
         client.initialize()
         return client
@@ -235,13 +251,80 @@ class LspClient:
                 value = (msg.get("params") or {}).get("value") or {}
                 if value.get("kind") == "end":
                     self._workspace_loaded = True
-            elif msg.get("method") == "window/workDoneProgress/create":
-                # auto-ack
+            elif msg.get("method") in {
+                "window/workDoneProgress/create",
+                "client/registerCapability",
+                "client/unregisterCapability",
+                "workspace/configuration",
+                "workspace/workspaceFolders",
+            }:
+                # Auto-ack common server→client requests so the LS does not stall.
                 rid = msg.get("id")
                 if rid is not None:
-                    self.transport.write_message({"jsonrpc": "2.0", "id": rid, "result": None})
+                    result: Any = None
+                    if msg.get("method") == "workspace/configuration":
+                        items = ((msg.get("params") or {}).get("items")) or []
+                        result = [{} for _ in items]
+                    elif msg.get("method") == "workspace/workspaceFolders":
+                        lsp_root = self.uri_root if self.uri_root is not None else self.root
+                        result = [
+                            {
+                                "uri": path_to_uri(lsp_root),
+                                "name": lsp_root.name or self.root.name,
+                            }
+                        ]
+                    self.transport.write_message(
+                        {"jsonrpc": "2.0", "id": rid, "result": result}
+                    )
+
+    def _to_uri(self, path: Path) -> str:
+        """Host path → LSP file URI (container uri_root when set)."""
+        resolved = path.resolve()
+        if self.uri_root is not None:
+            try:
+                rel = resolved.relative_to(self.root.resolve())
+                return path_to_uri(self.uri_root / rel)
+            except ValueError:
+                pass
+        return path_to_uri(resolved)
+
+    def _from_uri(self, uri: str) -> str:
+        """LSP file URI → host filesystem path."""
+        from urllib.parse import unquote, urlparse
+
+        if uri.startswith("file://"):
+            remote = unquote(urlparse(uri).path)
+        else:
+            remote = unquote(uri)
+        if self.uri_root is not None:
+            try:
+                rel = Path(remote).relative_to(self.uri_root)
+                return str((self.root / rel).resolve())
+            except ValueError:
+                pass
+        return remote
 
     def request(self, method: str, params: dict[str, Any] | None = None, timeout: float = 60.0) -> Any:
+        # rust-analyzer (and others) may reply -32801 ContentModified while the
+        # index is still settling; retry a few times before surfacing the error.
+        attempts = 4
+        last_err: Exception | None = None
+        for attempt in range(attempts):
+            try:
+                return self._request_once(method, params, timeout=timeout)
+            except LspError as exc:
+                last_err = exc
+                msg = str(exc)
+                if "-32801" in msg or "content modified" in msg.lower():
+                    time.sleep(0.15 * (attempt + 1))
+                    continue
+                raise
+        assert last_err is not None
+        raise last_err
+
+    def _request_once(
+        self, method: str, params: dict[str, Any] | None = None, timeout: float = 60.0
+    ) -> Any:
         with self._lock:
             rid = self._next_id
             self._next_id += 1
@@ -271,15 +354,19 @@ class LspClient:
         self.transport.write_message(msg)
 
     def initialize(self) -> None:
-        root_uri = path_to_uri(self.root)
+        lsp_root = self.uri_root if self.uri_root is not None else self.root
+        root_uri = path_to_uri(lsp_root)
         result = self.request(
             "initialize",
             {
                 "processId": os.getpid(),
                 "rootUri": root_uri,
-                "rootPath": str(self.root),
+                "rootPath": str(lsp_root),
                 "capabilities": {
-                    "workspace": {"workspaceFolders": True},
+                    "workspace": {
+                        "workspaceFolders": True,
+                        "configuration": True,
+                    },
                     "textDocument": {
                         "synchronization": {"didOpen": True, "didClose": True},
                         "hover": {"contentFormat": ["plaintext", "markdown"]},
@@ -292,7 +379,9 @@ class LspClient:
                     },
                     "window": {"workDoneProgress": True},
                 },
-                "workspaceFolders": [{"uri": root_uri, "name": self.root.name}],
+                "workspaceFolders": [
+                    {"uri": root_uri, "name": lsp_root.name or self.root.name}
+                ],
             },
             timeout=120.0,
         )
@@ -314,7 +403,7 @@ class LspClient:
         from agent_lsp.paths import resolve_under_root
 
         path = resolve_under_root(self.root, file_path)
-        uri = path_to_uri(path)
+        uri = self._to_uri(path)
         text = path.read_text(encoding="utf-8", errors="replace")
         version = self._open_docs.get(uri, 0) + 1
         self._open_docs[uri] = version
@@ -404,9 +493,10 @@ class LspClient:
         locs: list[Location] = []
         for item in result or []:
             rng = (item.get("range") or {}).get("start") or {}
+            raw_uri = item.get("uri", "")
             locs.append(
                 Location(
-                    uri=item.get("uri", ""),
+                    uri=path_to_uri(self._from_uri(raw_uri)) if raw_uri else "",
                     line=int(rng.get("line", 0)) + 1,
                     character=int(rng.get("character", 0)) + 1,
                 )
@@ -459,7 +549,7 @@ class LspClient:
             )
             locs.append(
                 Location(
-                    uri=target,
+                    uri=path_to_uri(self._from_uri(target)) if target else "",
                     line=int(rng.get("line", 0)) + 1,
                     character=int(rng.get("character", 0)) + 1,
                 )

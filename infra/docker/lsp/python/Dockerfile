@@ -7,7 +7,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g pyright \
-    && pyright-langserver --help >/dev/null
+    && command -v pyright-langserver \
+    && pyright --version
 
 COPY common/stdio_tcp_bridge.py /usr/local/bin/stdio-tcp-bridge
 RUN chmod +x /usr/local/bin/stdio-tcp-bridge
