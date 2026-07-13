@@ -16,7 +16,8 @@ class LanguageRuntime:
     container_workdir: str = "/workspace"
 
 
-# Images are placeholders; build from infra/docker/lsp.
+# Container images: infra/docker/lsp/{go,python,typescript,rust}/Dockerfile
+# python/typescript/rust images ENTRYPOINT stdio↔TCP bridge on :3737; Cmd = below.
 RUNTIMES: dict[str, LanguageRuntime] = {
     "go": LanguageRuntime(
         language="go",
@@ -27,7 +28,8 @@ RUNTIMES: dict[str, LanguageRuntime] = {
     "python": LanguageRuntime(
         language="python",
         image="ghcr.io/hewimetall/agent-lsp-python:latest",
-        cmd=["pyright-langserver", "--stdio"],  # TCP wrapper expected in image entrypoint
+        # Image ENTRYPOINT = stdio_tcp_bridge; this Cmd is the stdio LSP.
+        cmd=["pyright-langserver", "--stdio"],
         local_cmd=["pyright-langserver", "--stdio"],
     ),
     "typescript": LanguageRuntime(

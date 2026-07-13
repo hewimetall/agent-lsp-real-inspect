@@ -1,0 +1,46 @@
+# Optional local bring-up of all four LSP runtimes (TCP 3737–3740).
+# Build first: `./build.sh` from this directory.
+services:
+  go:
+    image: ${REGISTRY:-ghcr.io/hewimetall}/agent-lsp-go:${TAG:-latest}
+    build:
+      context: .
+      dockerfile: go/Dockerfile
+    ports:
+      - "127.0.0.1:3737:3737"
+    volumes:
+      - ${WORKSPACE:-.}:/workspace
+    working_dir: /workspace
+
+  python:
+    image: ${REGISTRY:-ghcr.io/hewimetall}/agent-lsp-python:${TAG:-latest}
+    build:
+      context: .
+      dockerfile: python/Dockerfile
+    ports:
+      - "127.0.0.1:3738:3737"
+    volumes:
+      - ${WORKSPACE:-.}:/workspace
+    working_dir: /workspace
+
+  typescript:
+    image: ${REGISTRY:-ghcr.io/hewimetall}/agent-lsp-typescript:${TAG:-latest}
+    build:
+      context: .
+      dockerfile: typescript/Dockerfile
+    ports:
+      - "127.0.0.1:3739:3737"
+    volumes:
+      - ${WORKSPACE:-.}:/workspace
+    working_dir: /workspace
+
+  rust:
+    image: ${REGISTRY:-ghcr.io/hewimetall}/agent-lsp-rust:${TAG:-latest}
+    build:
+      context: .
+      dockerfile: rust/Dockerfile
+    ports:
+      - "127.0.0.1:3740:3737"
+    volumes:
+      - ${WORKSPACE:-.}:/workspace
+    working_dir: /workspace

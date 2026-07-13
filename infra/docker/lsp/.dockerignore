@@ -1,0 +1,5 @@
+# Keep LSP image contexts small.
+**/.git
+**/__pycache__
+**/*.pyc
+**/.DS_Store
