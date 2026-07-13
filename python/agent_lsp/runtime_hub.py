@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from agent_lsp.lsp_client import LspClient
+from agent_lsp.lsp_client import LspClient, resolve_lsp_command
 from agent_lsp.runtimes import LanguageRuntime, get_runtime
 
 
@@ -92,7 +92,7 @@ class RuntimeHub:
 
         spec = get_runtime(language)
         port = _free_port()
-        cmd = [c.replace("{port}", str(port)) for c in spec.local_cmd]
+        cmd = resolve_lsp_command([c.replace("{port}", str(port)) for c in spec.local_cmd])
         if any("{port}" in c for c in spec.local_cmd):
             import time
 
