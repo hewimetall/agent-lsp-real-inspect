@@ -32,3 +32,4 @@ cache/
 *.log
 coverage-*.json
 .libs/
+.coverage
