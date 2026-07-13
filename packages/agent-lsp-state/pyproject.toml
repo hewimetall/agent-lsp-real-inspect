@@ -1,0 +1,19 @@
+[build-system]
+requires = ["maturin>=1.8,<2"]
+build-backend = "maturin"
+
+[project]
+name = "agent-lsp-state"
+version = "0.1.0"
+description = "Persistent sessions, workspaces, and container bindings (Rust PyO3 + SQLite)"
+requires-python = ">=3.12"
+readme = "README.md"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.maturin]
+features = ["extension-module"]
+python-source = "python"
+module-name = "agent_lsp_state._native"

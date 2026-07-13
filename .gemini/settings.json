@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "lsp": {
-      "command": "agent-lsp",
-      "args": ["go:gopls"]
-    }
-  }
-}

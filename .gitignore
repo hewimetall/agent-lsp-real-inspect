@@ -1,44 +1,32 @@
-# Build output
-/lsp-mcp-go
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
 
-# Test fixture build artifacts
-test/fixtures/rust/target/
-test/fixtures/java/target/
-test/fixtures/c/.cache/
-test/fixtures/go/lsp-mcp-go-fixtures
+# Rust / maturin
+target/
+**/Cargo.lock
+*.so
+*.dylib
+*.dll
 
-# SAW worktrees
-.claude/worktrees/
+# agent-lsp data
+state/
+projects/
+workspaces/
+cache/
 
-# Go workspace (local only)
-go.work
-go.work.sum
-.mcp.json
-.saw-state/
-lsp-mcp-go
-lsp-mcp-go-test
-
-# Build artifacts from local test runs
-test/fixtures/go/hello
-test/fixtures/kotlin/.gradle/
-test/fixtures/kotlin/.project
-test/fixtures/kotlin/.settings/
-test/fixtures/swift/.build/
-/agent-lsp
-
-# SAW state files generated during wave execution
-docs/IMPL/.saw-state/
-
-# SAW local config (contains machine-specific absolute paths)
-saw.config.json
-
-# Inspector output (generated; canonical location is docs/inspections/)
-/inspections/
+# IDE / OS
+.DS_Store
 .idea/
+.vscode/
 
-# mkdocs build output
-/site/
-.serena/
-.spec-workflow/
-.claude/scheduled_tasks.lock
-agent-lsp.exe
+# env
+.env
+*.log
