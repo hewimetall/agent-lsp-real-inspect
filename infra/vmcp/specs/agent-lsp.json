@@ -4,31 +4,31 @@
     {
       "name": "import_project",
       "read_only": false,
-      "task_support": "required",
+      "task_support": "optional",
       "description": "Clone/import bare repo (gix). MCP task=True required."
     },
     {
       "name": "ensure_runtime",
       "read_only": false,
-      "task_support": "required",
+      "task_support": "optional",
       "description": "Start session LSP (container or local). language_version / image optional."
     },
     {
       "name": "warm_index",
       "read_only": false,
-      "task_support": "required",
+      "task_support": "optional",
       "description": "Warm LSP index / readiness gate."
     },
     {
       "name": "install_workspace_deps",
       "read_only": false,
-      "task_support": "required",
+      "task_support": "optional",
       "description": "Install pip/npm/go deps (+ optional apt) into workspace."
     },
     {
       "name": "install_apt_packages",
       "read_only": false,
-      "task_support": "required",
+      "task_support": "optional",
       "description": "Apt bootstrap without allowlist; persisted for later installs."
     },
     {

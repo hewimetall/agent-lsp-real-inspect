@@ -1,6 +1,7 @@
-# Task-required tools
+# Task-aware tools (Cursor-compatible)
 
-Long scout ops **require** MCP `task=True` (`TaskConfig(mode="required")`).
+Long scout ops enqueue work into SQLite `TaskStore` and **wait** for completion
+while emitting progress.
 
 ## Tools
 
@@ -10,7 +11,33 @@ Long scout ops **require** MCP `task=True` (`TaskConfig(mode="required")`).
 - `install_apt_packages` — apt list with **no allowlist**; persisted for later installs
 - `warm_index` — readiness gate before scout
 
-## Client pattern
+## Modes
+
+| Client | How to call | Progress |
+|--------|-------------|----------|
+| **Cursor** (no Tasks API) | ordinary `tools/call` | `notifications/progress` (`_meta.progressToken`) |
+| Task-capable (FastMCP / vmcp) | `task=True` / `run_task` (optional) | Tasks status **or** progress |
+
+Server advertises `taskSupport: optional` (for Cursor list → `forbidden` so the
+IDE does not demand `callToolStream`). Sync calls are accepted.
+
+## Cursor / plain `tools/call`
+
+```python
+async with client:
+    await client.call_tool(
+        "import_project",
+        {"project_id": "dramatiq", "source": "https://github.com/Bogdanp/dramatiq.git"},
+    )
+    # … checkout_workspace …
+    await client.call_tool(
+        "ensure_runtime",
+        {"session_id": sid, "language": "python", "language_version": "3.11"},
+    )
+    await client.call_tool("warm_index", {"session_id": sid})
+```
+
+## Task-capable client (`task=True`)
 
 ```python
 async with client:
@@ -19,27 +46,12 @@ async with client:
         {"project_id": "dramatiq", "source": "https://github.com/Bogdanp/dramatiq.git"},
         task=True,
     )
-    # … checkout_workspace …
-    await client.call_tool(
-        "ensure_runtime",
-        {"session_id": sid, "language": "python", "language_version": "3.11"},
-        task=True,
-    )
-    await client.call_tool(
-        "install_workspace_deps",
-        {
-            "session_id": sid,
-            "language": "python",
-            "language_version": "3.11",
-            "packages": ["redis"],
-            "apt_packages": ["build-essential"],
-        },
-        task=True,
-    )
     task = await client.call_tool("warm_index", {"session_id": sid}, task=True)
     result = await task.result()
 ```
 
-Without `task=True` the server rejects the call (required mode).
+On initialize the server logs `clientInfo.name` / version / caps
+(`journalctl -u agent-lsp | grep mcp_initialize`). Names containing `cursor`
+select the progress-first path.
 
 Durable queue is SQLite `state/tasks.db` (not Docket). See ADR-0001…0004, ADR-0010.

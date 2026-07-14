@@ -19,8 +19,11 @@
 
 1. Tool ставит задачу в SQLite `TaskStore` и будит `ScoutWorker`.
 2. Tool **ждёт** terminal status (`done` / `error`) через `await_sqlite_task`.
-3. FastMCP `TaskConfig(mode="required")` — клиент **обязан** вызывать с `task=True`
-   (SEP-1686 wait + `notifications/tasks/status`).
+3. FastMCP `TaskConfig(mode="optional")` — task-capable clients **may** call with
+   `task=True` (SEP-1686). Clients **without** Tasks (notably **Cursor**) use
+   ordinary `tools/call` + `notifications/progress`. Middleware rewrites
+   advertised `taskSupport` to `forbidden` for Cursor so the IDE does not demand
+   `callToolStream`.
 4. `get_task_status(task_id)` — инспекция SQLite-строки (опционально).
 
 # ADR-0001 targets (extended by ADR-0010)
@@ -37,13 +40,13 @@ Targets: `import_project` | `ensure_runtime` | `warm_index` |
 
 ### Negative / risks
 
-- Клиенты без `task=True` не смогут вызвать required tools.
+- Клиенты без Tasks (Cursor) идут sync+progress; task-capable — по желанию `task=True`.
 - Два ID: MCP protocol task id и наш SQLite `task_id` (связь в progress message).
 
 ## Alternatives considered
 
 | Option | Why not |
 |--------|---------|
-| Синхронный warm_index | Таймауты MCP |
-| `mode=optional` | Не «обязательный» task support |
+| Синхронный warm_index без progress | Таймауты / плохой UX |
+| `mode=required` only | Cursor (нет Tasks API) получает `-32600` |
 | Только polling `get_task_status` | Плохой UX без notifications |
