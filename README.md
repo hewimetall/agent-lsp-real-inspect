@@ -15,20 +15,25 @@ Scout LSP MCP-сервер: **FastMCP + Rust/PyO3** + **обязательный
 
 ## Task support (обязательно)
 
-`import_project` / `ensure_runtime` / `warm_index` → `TaskConfig(mode="required")`.
+`import_project` / `ensure_runtime` / `install_workspace_deps` /
+`install_apt_packages` / `warm_index` → `TaskConfig(mode="required")`.
 
 Клиент **должен** вызывать с `task=True`. Очередь — SQLite `state/tasks.db`,
-не Docket. Docs: [`docs/guide/tasks.md`](docs/guide/tasks.md) · ADL: [`docs/adr/`](docs/adr/README.md).
+не Docket. Docs: [`docs/guide/tasks.md`](docs/guide/tasks.md) ·
+[`docs/guide/workspace-deps.md`](docs/guide/workspace-deps.md) ·
+ADL: [`docs/adr/`](docs/adr/README.md).
 
 ## Happy path
 
 ```text
 create_session
-  → import_project(..., task=True)
+  → import_project(source=<git|path>, task=True)
   → checkout_workspace
-  → ensure_runtime(..., task=True)
+  → ensure_runtime(language, language_version="3.11", task=True)
+  → install_apt_packages([...], task=True)          # optional, no allowlist
+  → install_workspace_deps(packages=[...], task=True)  # venv / node_modules / go mod
   → warm_index(..., task=True)
-  → blast_radius / explore_symbol
+  → blast_radius / explore_symbol   # python → site-packages
   → close_session
 ```
 

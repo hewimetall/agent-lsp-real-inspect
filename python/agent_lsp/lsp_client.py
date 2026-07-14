@@ -143,7 +143,9 @@ class StdioTransport(_Transport):
 class TcpTransport(_Transport):
     def __init__(self, host: str, port: int, timeout: float = 30.0) -> None:
         self.sock = socket.create_connection((host, port), timeout=timeout)
-        self.sock.settimeout(timeout)
+        # Connect uses `timeout`; reader must block — quiet pyright after initialize
+        # would otherwise kill the reader and hang warm_index requests.
+        self.sock.settimeout(None)
         self._rfile = self.sock.makefile("rb")
         self._lock = threading.Lock()
 
@@ -183,6 +185,10 @@ class LspClient:
     root: Path
     language_id: str
     transport: _Transport
+    # Host worktree bind-mounted at uri_root inside containers (e.g. /workspace).
+    uri_root: Path | None = None
+    # workspace/configuration + didChangeConfiguration payload (venv, extraPaths, …).
+    settings: dict[str, Any] = field(default_factory=dict)
     _next_id: int = 1
     _pending: dict[int, dict[str, Any] | None] = field(default_factory=dict)
     _reader: threading.Thread | None = None
@@ -193,15 +199,37 @@ class LspClient:
     _cond: threading.Condition = field(default_factory=threading.Condition)
 
     @classmethod
-    def connect_tcp(cls, root: Path, language_id: str, host: str, port: int) -> LspClient:
+    def connect_tcp(
+        cls,
+        root: Path,
+        language_id: str,
+        host: str,
+        port: int,
+        *,
+        uri_root: Path | None = None,
+        settings: dict[str, Any] | None = None,
+    ) -> LspClient:
         transport = TcpTransport(host, port)
-        client = cls(root=root, language_id=language_id, transport=transport)
+        client = cls(
+            root=root,
+            language_id=language_id,
+            transport=transport,
+            uri_root=uri_root,
+            settings=dict(settings or {}),
+        )
         client._start_reader()
         client.initialize()
         return client
 
     @classmethod
-    def spawn_local(cls, root: Path, language_id: str, cmd: list[str]) -> LspClient:
+    def spawn_local(
+        cls,
+        root: Path,
+        language_id: str,
+        cmd: list[str],
+        *,
+        settings: dict[str, Any] | None = None,
+    ) -> LspClient:
         resolved = resolve_lsp_command(cmd)
         # Discard stderr so a chatty language server cannot fill the PIPE and deadlock.
         # Keep a DEVNULL handle (not None) so the child does not inherit the parent tty.
@@ -213,7 +241,12 @@ class LspClient:
             cwd=str(root),
         )
         transport = StdioTransport(proc)
-        client = cls(root=root, language_id=language_id, transport=transport)
+        client = cls(
+            root=root,
+            language_id=language_id,
+            transport=transport,
+            settings=dict(settings or {}),
+        )
         client._start_reader()
         client.initialize()
         return client
@@ -236,13 +269,81 @@ class LspClient:
                 value = (msg.get("params") or {}).get("value") or {}
                 if value.get("kind") == "end":
                     self._workspace_loaded = True
-            elif msg.get("method") == "window/workDoneProgress/create":
-                # auto-ack
+            elif msg.get("method") in {
+                "window/workDoneProgress/create",
+                "client/registerCapability",
+                "client/unregisterCapability",
+                "workspace/configuration",
+                "workspace/workspaceFolders",
+            }:
                 rid = msg.get("id")
                 if rid is not None:
-                    self.transport.write_message({"jsonrpc": "2.0", "id": rid, "result": None})
+                    result: Any = None
+                    method = msg.get("method")
+                    if method == "workspace/configuration":
+                        from agent_lsp.lsp_settings import configuration_items_response
+
+                        items = ((msg.get("params") or {}).get("items")) or []
+                        result = configuration_items_response(items, self.settings)
+                    elif method == "workspace/workspaceFolders":
+                        lsp_root = self.uri_root if self.uri_root is not None else self.root
+                        result = [
+                            {
+                                "uri": path_to_uri(lsp_root),
+                                "name": lsp_root.name or self.root.name,
+                            }
+                        ]
+                    self.transport.write_message(
+                        {"jsonrpc": "2.0", "id": rid, "result": result}
+                    )
+
+    def _to_uri(self, path: Path) -> str:
+        resolved = path.resolve()
+        if self.uri_root is not None:
+            try:
+                rel = resolved.relative_to(self.root.resolve())
+                return path_to_uri(self.uri_root / rel)
+            except ValueError:
+                pass
+        return path_to_uri(resolved)
+
+    def _from_uri(self, uri: str) -> str:
+        from urllib.parse import unquote, urlparse
+
+        if uri.startswith("file://"):
+            remote = unquote(urlparse(uri).path)
+        else:
+            remote = unquote(uri)
+        if self.uri_root is not None:
+            try:
+                rel = Path(remote).relative_to(self.uri_root)
+                return str((self.root / rel).resolve())
+            except ValueError:
+                pass
+        return remote
+
+    def apply_settings(self, settings: dict[str, Any]) -> None:
+        self.settings = dict(settings)
+        self.notify("workspace/didChangeConfiguration", {"settings": self.settings})
 
     def request(self, method: str, params: dict[str, Any] | None = None, timeout: float = 60.0) -> Any:
+        # rust-analyzer may reply -32801 ContentModified while the index settles.
+        attempts = 4
+        last_err: Exception | None = None
+        for attempt in range(attempts):
+            try:
+                return self._request_once(method, params, timeout=timeout)
+            except LspError as exc:
+                last_err = exc
+                msg = str(exc)
+                if "-32801" in msg or "content modified" in msg.lower():
+                    time.sleep(0.15 * (attempt + 1))
+                    continue
+                raise
+        assert last_err is not None
+        raise last_err
+
+    def _request_once(self, method: str, params: dict[str, Any] | None = None, timeout: float = 60.0) -> Any:
         with self._lock:
             rid = self._next_id
             self._next_id += 1
@@ -272,15 +373,20 @@ class LspClient:
         self.transport.write_message(msg)
 
     def initialize(self) -> None:
-        root_uri = path_to_uri(self.root)
+        lsp_root = self.uri_root if self.uri_root is not None else self.root
+        root_uri = path_to_uri(lsp_root)
+        process_id = None if isinstance(self.transport, TcpTransport) else os.getpid()
         result = self.request(
             "initialize",
             {
-                "processId": os.getpid(),
+                "processId": process_id,
                 "rootUri": root_uri,
-                "rootPath": str(self.root),
+                "rootPath": str(lsp_root),
                 "capabilities": {
-                    "workspace": {"workspaceFolders": True},
+                    "workspace": {
+                        "workspaceFolders": True,
+                        "configuration": True,
+                    },
                     "textDocument": {
                         "synchronization": {"didOpen": True, "didClose": True},
                         "hover": {"contentFormat": ["plaintext", "markdown"]},
@@ -293,11 +399,15 @@ class LspClient:
                     },
                     "window": {"workDoneProgress": True},
                 },
-                "workspaceFolders": [{"uri": root_uri, "name": self.root.name}],
+                "workspaceFolders": [
+                    {"uri": root_uri, "name": lsp_root.name or self.root.name}
+                ],
             },
             timeout=120.0,
         )
         self.notify("initialized", {})
+        if self.settings:
+            self.notify("workspace/didChangeConfiguration", {"settings": self.settings})
         _ = result
 
     def is_workspace_loaded(self) -> bool:
@@ -315,7 +425,7 @@ class LspClient:
         from agent_lsp.paths import resolve_under_root
 
         path = resolve_under_root(self.root, file_path)
-        uri = path_to_uri(path)
+        uri = self._to_uri(path)
         text = path.read_text(encoding="utf-8", errors="replace")
         version = self._open_docs.get(uri, 0) + 1
         self._open_docs[uri] = version
@@ -405,9 +515,10 @@ class LspClient:
         locs: list[Location] = []
         for item in result or []:
             rng = (item.get("range") or {}).get("start") or {}
+            raw_uri = item.get("uri", "")
             locs.append(
                 Location(
-                    uri=item.get("uri", ""),
+                    uri=path_to_uri(self._from_uri(raw_uri)) if raw_uri else "",
                     line=int(rng.get("line", 0)) + 1,
                     character=int(rng.get("character", 0)) + 1,
                 )
@@ -460,7 +571,7 @@ class LspClient:
             )
             locs.append(
                 Location(
-                    uri=target,
+                    uri=path_to_uri(self._from_uri(target)) if target else "",
                     line=int(rng.get("line", 0)) + 1,
                     character=int(rng.get("character", 0)) + 1,
                 )

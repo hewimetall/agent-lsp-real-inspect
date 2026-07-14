@@ -287,14 +287,23 @@ def commit_workspace(
 
 
 def enqueue_ensure_runtime(
-    session_id: str, language: str, prefer_container: bool = True
+    session_id: str,
+    language: str,
+    prefer_container: bool = True,
+    language_version: str = "",
+    image: str = "",
 ) -> dict[str, Any]:
     bound = _active_workspace(session_id)
     if isinstance(bound, dict):
         return bound
     _, ws = bound
     payload = json.dumps(
-        {"language": language, "prefer_container": prefer_container}
+        {
+            "language": language,
+            "prefer_container": prefer_container,
+            "language_version": language_version,
+            "image": image,
+        }
     )
     tid = get_tasks().submit(session_id, ws["path"], "ensure_runtime", payload)
     wake_worker(get_tasks())
@@ -311,12 +320,159 @@ async def ensure_runtime(
     session_id: str,
     language: str,
     prefer_container: bool = True,
+    language_version: str = "",
+    image: str = "",
     ctx: Context | None = None,
     progress: Progress = Progress(),  # noqa: B008
 ) -> dict[str, Any]:
-    """Start LSP runtime held by the session. Requires MCP task=True."""
+    """Start LSP runtime held by the session.
+
+    ``language_version`` pins the interpreter/toolchain (e.g. python ``3.11``,
+    go ``1.23``, node ``22``). ``image`` overrides the resolved LSP image tag.
+    Requires MCP task=True.
+    """
     _ = ctx
-    queued = enqueue_ensure_runtime(session_id, language, prefer_container)
+    queued = enqueue_ensure_runtime(
+        session_id,
+        language,
+        prefer_container,
+        language_version=language_version,
+        image=image,
+    )
+    if "error" in queued:
+        return queued
+    return await _wait_queued_task(str(queued["task_id"]), progress)
+
+
+def enqueue_install_workspace_deps(
+    session_id: str,
+    language: str = "",
+    language_version: str = "",
+    manager: str = "auto",
+    packages: list[str] | None = None,
+    apt_packages: list[str] | None = None,
+    extra_args: list[str] | None = None,
+    restart_runtime: bool = True,
+    install_image: str = "",
+) -> dict[str, Any]:
+    bound = _active_workspace(session_id)
+    if isinstance(bound, dict):
+        return bound
+    _, ws = bound
+    payload = json.dumps(
+        {
+            "language": language,
+            "language_version": language_version,
+            "manager": manager,
+            "packages": packages or [],
+            "apt_packages": apt_packages or [],
+            "extra_args": extra_args or [],
+            "restart_runtime": restart_runtime,
+            "install_image": install_image,
+        }
+    )
+    tid = get_tasks().submit(session_id, ws["path"], "install_workspace_deps", payload)
+    wake_worker(get_tasks())
+    return {
+        "task_id": tid,
+        "status": "queued",
+        "target": "install_workspace_deps",
+        "workspace": ws["path"],
+    }
+
+
+@mcp.tool(task=_SCOUT_TASK)
+async def install_workspace_deps(
+    session_id: str,
+    language: str = "",
+    language_version: str = "",
+    manager: str = "auto",
+    packages: list[str] | None = None,
+    apt_packages: list[str] | None = None,
+    extra_args: list[str] | None = None,
+    restart_runtime: bool = True,
+    install_image: str = "",
+    ctx: Context | None = None,
+    progress: Progress = Progress(),  # noqa: B008
+) -> dict[str, Any]:
+    """Install project / ad-hoc deps into the active workspace (venv, node_modules, go mod).
+
+    For Python, creates ``.agent-lsp/venv`` so blast/LSP resolve into site-packages.
+    Optional ``apt_packages`` run in the same throwaway install container (no allowlist).
+    Requires MCP task=True.
+    """
+    _ = ctx
+    queued = enqueue_install_workspace_deps(
+        session_id,
+        language=language,
+        language_version=language_version,
+        manager=manager,
+        packages=packages,
+        apt_packages=apt_packages,
+        extra_args=extra_args,
+        restart_runtime=restart_runtime,
+        install_image=install_image,
+    )
+    if "error" in queued:
+        return queued
+    return await _wait_queued_task(str(queued["task_id"]), progress)
+
+
+def enqueue_install_apt_packages(
+    session_id: str,
+    packages: list[str],
+    language: str = "",
+    language_version: str = "",
+    install_image: str = "",
+) -> dict[str, Any]:
+    bound = _active_workspace(session_id)
+    if isinstance(bound, dict):
+        return bound
+    _, ws = bound
+    if not packages:
+        return {"error": "packages_required", "session_id": session_id}
+    payload = json.dumps(
+        {
+            "packages": packages,
+            "language": language,
+            "language_version": language_version,
+            "install_image": install_image,
+        }
+    )
+    tid = get_tasks().submit(session_id, ws["path"], "install_apt_packages", payload)
+    wake_worker(get_tasks())
+    return {
+        "task_id": tid,
+        "status": "queued",
+        "target": "install_apt_packages",
+        "workspace": ws["path"],
+    }
+
+
+@mcp.tool(task=_SCOUT_TASK)
+async def install_apt_packages(
+    session_id: str,
+    packages: list[str],
+    language: str = "",
+    language_version: str = "",
+    install_image: str = "",
+    ctx: Context | None = None,
+    progress: Progress = Progress(),  # noqa: B008
+) -> dict[str, Any]:
+    """Record + attempt apt packages with no allowlist validation (build bootstrap).
+
+    Names are shell-quoted only. The list is persisted under
+    ``.agent-lsp/apt-packages.txt`` and reapplied on ``install_workspace_deps``.
+    Requires MCP task=True.
+    """
+    _ = ctx
+    queued = enqueue_install_apt_packages(
+        session_id,
+        packages,
+        language=language,
+        language_version=language_version,
+        install_image=install_image,
+    )
     if "error" in queued:
         return queued
     return await _wait_queued_task(str(queued["task_id"]), progress)

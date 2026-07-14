@@ -27,7 +27,9 @@ Long tools use `TaskConfig(mode="required")`:
 | Tool | Target | Notes |
 |------|--------|-------|
 | `import_project` | `import_project` | gix clone/import |
-| `ensure_runtime` | `ensure_runtime` | container or local LSP |
+| `ensure_runtime` | `ensure_runtime` | container or local LSP (+ language_version) |
+| `install_workspace_deps` | `install_workspace_deps` | venv / node_modules / go mod (+ optional apt) |
+| `install_apt_packages` | `install_apt_packages` | apt bootstrap, no allowlist |
 | `warm_index` | `warm_index` | index + cache warm |
 
 ```text

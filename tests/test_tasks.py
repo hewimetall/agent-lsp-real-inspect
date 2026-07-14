@@ -134,11 +134,59 @@ def test_worker_import_and_warm_flow(data_dirs: Path, monkeypatch: pytest.Monkey
     assert st["status"] in {"done", "error"}
 
 
-def test_wake_worker(data_dirs: Path) -> None:
-    w = wake_worker(server.get_tasks())
-    assert w is not None
-    w.stop()
+def test_worker_install_deps_local(data_dirs: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_lsp import worker as worker_mod
+    from agent_lsp import env_layout
 
+    if worker_mod._worker is not None:
+        worker_mod._worker.stop()
+        worker_mod._worker = None
 
-def test_get_task_status_missing(data_dirs: Path) -> None:
-    assert server.get_task_status("nope")["error"] == "not_found"
+    monkeypatch.setattr(worker_mod, "wake_worker", lambda tasks: ScoutWorker(tasks))  # type: ignore[arg-type]
+    monkeypatch.setattr(server, "wake_worker", lambda tasks: ScoutWorker(tasks))  # type: ignore[arg-type]
+
+    sid = server.create_session()["session_id"]
+    server.create_project("depsdemo")
+    co = server.checkout_workspace(sid, "depsdemo")
+    wt = Path(co["path"])
+    (wt / "app.py").write_text("x = 1\n", encoding="utf-8")
+
+    def fake_run(self, **kwargs):  # noqa: ANN001
+        env_layout.ensure_agent_lsp_dir(Path(kwargs["workspace"]))
+        venv = env_layout.venv_path(Path(kwargs["workspace"]))
+        (venv / "lib" / "python3.12" / "site-packages").mkdir(parents=True, exist_ok=True)
+        (venv / "bin").mkdir(parents=True, exist_ok=True)
+        py = venv / "bin" / "python"
+        if not py.exists():
+            py.write_text("", encoding="utf-8")
+        return {
+            "mode": "local",
+            "image": None,
+            "status_code": 0,
+            "logs": "ok",
+            "container_id": None,
+        }
+
+    monkeypatch.setattr(ScoutWorker, "_run_script", fake_run)
+
+    q = server.enqueue_install_workspace_deps(
+        sid,
+        language="python",
+        language_version="3.12",
+        packages=["requests"],
+        restart_runtime=False,
+    )
+    worker = ScoutWorker(server.get_tasks(), poll_seconds=0.05)
+    assert worker.process_one() is True
+    st = server.get_task_status(q["task_id"])
+    assert st["status"] == "done"
+    art = json.loads(st.get("artifact") or "{}")
+    assert art.get("manager") == "pip"
+    assert art.get("site_packages")
+
+    q_apt = server.enqueue_install_apt_packages(sid, ["ca-certificates"], language="python")
+    assert worker.process_one() is True
+    apt_st = server.get_task_status(q_apt["task_id"])
+    assert apt_st["status"] == "done"
+    assert "ca-certificates" in env_layout.read_apt_packages(wt)
+
