@@ -122,6 +122,7 @@ class RuntimeHub:
         ):
             return existing
         if existing is not None:
+            # Always pass docker when replacing a container-backed runtime so stop/remove runs.
             docker_svc = docker
             if docker_svc is None and existing.runtime_mode == "container":
                 try:
@@ -281,7 +282,8 @@ class RuntimeHub:
             raise RuntimeError(f"no runtime for session {session_id}")
         rt.index_status = "warming"
         rt.error = None
-        # pyright/gopls often never emit workDoneProgress end — bound the wait.
+        # Many servers (pyright, gopls) never emit workDoneProgress end. Bound the
+        # wait so seed probing can still finish inside the MCP task budget.
         progress_budget = min(15.0, max(3.0, timeout * 0.15))
         ready = rt.client.wait_until_ready(timeout=progress_budget)
         seed = _find_seed_file(rt.workspace_path, rt.language)

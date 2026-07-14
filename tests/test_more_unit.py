@@ -77,6 +77,24 @@ def test_path_to_uri(tmp_path: Path) -> None:
     assert path_to_uri(p).startswith("file://")
 
 
+def test_lsp_client_container_uri_mapping(tmp_path: Path) -> None:
+    host = tmp_path / "ws"
+    host.mkdir()
+    rel = host / "pkg" / "mod.py"
+    rel.parent.mkdir()
+    rel.write_text("x = 1\n", encoding="utf-8")
+    client = LspClient(
+        root=host,
+        language_id="python",
+        transport=object(),  # type: ignore[arg-type]
+        uri_root=Path("/workspace"),
+    )
+    uri = client._to_uri(rel)
+    assert uri == "file:///workspace/pkg/mod.py"
+    assert client._from_uri(uri) == str(rel.resolve())
+    assert client._from_uri("file:///workspace/pkg/mod.py") == str(rel.resolve())
+
+
 def test_blast_helpers() -> None:
     assert is_test_file("x_test.go")
     assert is_test_file("foo.spec.ts")

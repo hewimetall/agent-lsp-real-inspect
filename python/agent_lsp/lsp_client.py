@@ -142,8 +142,9 @@ class StdioTransport(_Transport):
 class TcpTransport(_Transport):
     def __init__(self, host: str, port: int, timeout: float = 30.0) -> None:
         self.sock = socket.create_connection((host, port), timeout=timeout)
-        # Connect uses `timeout`; reader must block — quiet pyright after initialize
-        # would otherwise kill the reader and hang warm_index requests.
+        # Connect uses `timeout`, but the reader must block indefinitely: pyright
+        # (and others) go quiet after initialize, and a short socket timeout kills
+        # the reader thread so later warm_index requests hang until request timeout.
         self.sock.settimeout(None)
         self._rfile = self.sock.makefile("rb")
         self._lock = threading.Lock()
@@ -184,7 +185,8 @@ class LspClient:
     root: Path
     language_id: str
     transport: _Transport
-    # Host worktree bind-mounted at uri_root inside containers (e.g. /workspace).
+    # When the LSP runs in a container, host `root` is bind-mounted at `uri_root`
+    # (e.g. /workspace). All LSP URIs must use the container path; file IO stays on host.
     uri_root: Path | None = None
     # workspace/configuration + didChangeConfiguration payload (venv, extraPaths, …).
     settings: dict[str, Any] = field(default_factory=dict)
@@ -275,6 +277,7 @@ class LspClient:
                 "workspace/configuration",
                 "workspace/workspaceFolders",
             }:
+                # Auto-ack common server→client requests so the LS does not stall.
                 rid = msg.get("id")
                 if rid is not None:
                     result: Any = None
@@ -297,6 +300,7 @@ class LspClient:
                     )
 
     def _to_uri(self, path: Path) -> str:
+        """Host path → LSP file URI (container uri_root when set)."""
         resolved = path.resolve()
         if self.uri_root is not None:
             try:
@@ -307,6 +311,7 @@ class LspClient:
         return path_to_uri(resolved)
 
     def _from_uri(self, uri: str) -> str:
+        """LSP file URI → host filesystem path."""
         from urllib.parse import unquote, urlparse
 
         if uri.startswith("file://"):
@@ -326,7 +331,8 @@ class LspClient:
         self.notify("workspace/didChangeConfiguration", {"settings": self.settings})
 
     def request(self, method: str, params: dict[str, Any] | None = None, timeout: float = 60.0) -> Any:
-        # rust-analyzer may reply -32801 ContentModified while the index settles.
+        # rust-analyzer (and others) may reply -32801 ContentModified while the
+        # index is still settling; retry a few times before surfacing the error.
         attempts = 4
         last_err: Exception | None = None
         for attempt in range(attempts):
@@ -342,7 +348,9 @@ class LspClient:
         assert last_err is not None
         raise last_err
 
-    def _request_once(self, method: str, params: dict[str, Any] | None = None, timeout: float = 60.0) -> Any:
+    def _request_once(
+        self, method: str, params: dict[str, Any] | None = None, timeout: float = 60.0
+    ) -> Any:
         with self._lock:
             rid = self._next_id
             self._next_id += 1
@@ -374,6 +382,9 @@ class LspClient:
     def initialize(self) -> None:
         lsp_root = self.uri_root if self.uri_root is not None else self.root
         root_uri = path_to_uri(lsp_root)
+        # TCP-attached language servers (containers / remote) must not receive a
+        # host processId: pyright watches that PID and exits when it is absent
+        # from the server's PID namespace. Local stdio keeps os.getpid().
         process_id = None if isinstance(self.transport, TcpTransport) else os.getpid()
         result = self.request(
             "initialize",
