@@ -1,0 +1,21 @@
+{
+  "upstreams": [
+    {
+      "name": "agent-lsp",
+      "description": "Scout LSP MCP (hewimetall/agent-lsp-real-inspect): sessions, gix worktrees, versioned runtimes, deps/apt install, warm_index, blast_radius.",
+      "transport": "stdio",
+      "command": "uv",
+      "args": ["run", "--directory", "/ABS/PATH/TO/agent-lsp-real-inspect", "agent-lsp"],
+      "cwd": "/ABS/PATH/TO/agent-lsp-real-inspect",
+      "env": {
+        "FASTMCP_SHOW_CLI_BANNER": "false",
+        "AGENT_LSP_STATE": "/ABS/PATH/TO/agent-lsp-real-inspect/.data/state",
+        "AGENT_LSP_PROJECTS": "/ABS/PATH/TO/agent-lsp-real-inspect/.data/projects",
+        "AGENT_LSP_WORKSPACES": "/ABS/PATH/TO/agent-lsp-real-inspect/.data/workspaces",
+        "AGENT_LSP_CACHE": "/ABS/PATH/TO/agent-lsp-real-inspect/.data/cache"
+      },
+      "sidecar_spec": "agent-lsp.json",
+      "enabled": true
+    }
+  ]
+}

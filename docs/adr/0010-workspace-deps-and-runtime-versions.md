@@ -73,5 +73,7 @@ already vendors them.
 ## External validation
 
 Cross-check vs Dev Containers / Pyright / gopls / tsserver / SCIP and related GitHub
-issues (vmcp GraphQL aliased batch):
+issues (vmcp GraphQL aliased batch) — **frozen report**:
 [`docs/guide/workspace-deps-validation.md`](../guide/workspace-deps-validation.md).
+
+Operator runbooks: [solo](../guide/runbook-solo.md) · [with vmcp](../guide/runbook-with-vmcp.md).

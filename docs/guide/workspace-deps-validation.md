@@ -1,94 +1,53 @@
-# Validation: workspace deps + versioned runtimes (via vmcp/mcpwork)
+# Validation report (FIXED) — workspace deps + versioned runtimes
 
-Sources gathered in **two aliased `query_graphql` batches** (Tavily, Context7,
-Searchcode, SerpApi) against ADR-0010 / `install_workspace_deps` /
-`ensure_runtime(language_version=…)`.
+- **Status:** Accepted / frozen
+- **Date:** 2026-07-14
+- **Method:** vmcp/mcpwork `query_graphql` with **GraphQL aliases** (batched; not 1-by-1)
+- **Scope:** ADR-0010 + `install_workspace_deps` / `install_apt_packages` / `language_version`
+- **Companion runbooks:** [runbook-solo.md](runbook-solo.md) · [runbook-with-vmcp.md](runbook-with-vmcp.md)
 
-## Verdict
+## Verdict (locked)
 
-**ADR-0010 matches established industry patterns.** Closest analogues:
+**ADR-0010 matches established industry patterns.** It is Dev Containers (version +
+apt + install) composed with pyright/gopls/tsserver resolution rules and
+Sourcegraph’s “index only with deps present” rule — not a novel invention.
 
-| Pattern | Similar system | Our mapping |
-|---------|----------------|-------------|
-| Pin interpreter / toolchain version | [Dev Container Features](https://devcontainers.github.io/implementors/features) `options.version` (python/node/go) | `ensure_runtime(language_version=…)` + install base images |
-| Install deps into workspace before analysis | [scip-python](https://sourcegraph.com/blog/scip-python) — index from an activated venv with deps installed | `install_workspace_deps` → `.agent-lsp/venv` / `node_modules` / `GOMODCACHE` |
-| Point LSP at env, not only source tree | Pyright `venvPath`/`venv`/`pythonPath`/`extraPaths` ([docs](https://github.com/microsoft/pyright/blob/main/docs/configuration.md)) | `lsp_settings.build_lsp_settings` → `workspace/configuration` |
-| Apt / build headers only for compile | Multi-stage Docker: `apt-get` in builder, wheels into volume | `apt_packages` in **same throwaway** install container; list in `.agent-lsp/apt-packages.txt` |
-| Session-held LSP + durable caches | gopls `GOMODCACHE` / `GOPLSCACHE` ([golang/tools](https://github.com/golang/tools)) | ADR-0009 binds under `AGENT_LSP_CACHE` |
+| Pattern | Similar system | agent-lsp mapping |
+|---------|----------------|-------------------|
+| Pin interpreter / toolchain | [Dev Container Features](https://devcontainers.github.io/implementors/features) `options.version` | `ensure_runtime(language_version=…)` + install base images |
+| Install deps before analysis | [scip-python](https://sourcegraph.com/blog/scip-python) (venv with deps) | `install_workspace_deps` → `.agent-lsp/venv` / `node_modules` / `GOMODCACHE` |
+| Point LSP at env | Pyright `venvPath` / `pythonPath` / `extraPaths` | `lsp_settings` → `workspace/configuration` |
+| Apt only for compile | Multi-stage Docker wheel/cgo builders | `apt_packages` in throwaway install container + `.agent-lsp/apt-packages.txt` |
+| Session LSP + durable caches | gopls `GOMODCACHE` / `GOPLSCACHE` | ADR-0009 binds under `AGENT_LSP_CACHE` |
 
-**Not a novel invention** — it is Dev Containers (version + apt + install) composed with
-pyright/gopls/tsserver resolution rules and Sourcegraph’s “index with deps present” rule.
+## Evidence sources (batched)
 
-## Supporting docs (Context7)
+Two aliased GraphQL documents covering:
 
-- **Pyright** (`/microsoft/pyright`): `venvPath`/`venv` steer import resolution into the
-  venv’s `site-packages`; prefer `pythonPath` / `--pythonpath` when the interpreter is known.
-- **gopls** (`/websites/go_dev_gopls`): per-project env (`GOPATH`, PATH) is a supported
-  editor pattern; module cache is env-driven (`GOMODCACHE`).
-- **typescript-language-server**: resolves via workspace `node_modules` / TS project;
-  init options include `npmLocation`, `maxTsServerMemory`.
+- **Tavily** — web patterns + GitHub issue search
+- **Context7** — `/microsoft/pyright`, `/websites/go_dev_gopls`, `/typescript-language-server/typescript-language-server`
+- **Searchcode** — `microsoft/pyright`, `golang/tools`, `devcontainers/features`, `sourcegraph/scip-python`
+- **SerpApi** — supplemental SERP (some queries empty / rate-limited)
 
-## Recurring issues our design already addresses
+`tavily_research` hit plan limit (HTTP 432); coverage remained via aliased search + extract.
 
-### 1. Host `processId` inside Docker → LSP exits
+## Issues our design already closes
 
-- Spec: `processId` may be `null`; if set and parent is gone, server should exit
-  ([LSP 3.17](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/)).
-- Real bugs: [anomalyco/opencode#36162](https://github.com/anomalyco/opencode/issues/36162)
-  (explicit fix: rewrite `processId` → `null` for container LSPs);
-  [denoland/deno#22012](https://github.com/denoland/deno/issues/22012).
-- **Ours:** TCP/container clients send `processId: null` (`LspClient.initialize`).
+| Issue | Link | Our fix |
+|-------|------|---------|
+| Host `processId` in Docker → LSP exits | [opencode#36162](https://github.com/anomalyco/opencode/issues/36162), [deno#22012](https://github.com/denoland/deno/issues/22012), [LSP 3.17](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/) | TCP clients send `processId: null` |
+| Pyright missing venv packages | [pyright#702](https://github.com/microsoft/pyright/issues/702), [#4839](https://github.com/microsoft/pyright/issues/4839) | `.agent-lsp/venv` + `pythonPath`/`extraPaths` |
+| Go module cache path failures | e.g. [vscode-go#2573](https://github.com/golang/vscode-go/issues/2573) | bind `GOMODCACHE` / `GOPLSCACHE` |
+| Apt does not persist in ephemeral containers | Docker multi-stage practice | reapply from `.agent-lsp/apt-packages.txt` on deps install |
 
-### 2. Pyright missing venv / site-packages
+## Residual risks (accepted)
 
-- [microsoft/pyright#702](https://github.com/microsoft/pyright/issues/702) — cannot find
-  virtualenv packages without correct config.
-- [microsoft/pyright#4839](https://github.com/microsoft/pyright/issues/4839) — Docker +
-  `venvPath`/`site-packages` layout surprises (`lib/site-packages` vs `lib/pythonX.Y/...`).
-- **Ours:** create `.agent-lsp/venv`, discover `lib/python*/site-packages`, push
-  `pythonPath` + `extraPaths` over LSP configuration.
+1. Multi-version LSP image tags must be published (`make -C infra/docker/lsp versions`).
+2. Apt-only without a later deps install does not change what the LSP sees.
+3. `tsserver` / pyright need deps **before** `warm_index` (skill order enforces this).
 
-### 3. Go module / gopls cache in constrained environments
+## Freeze note
 
-- vscode-go / go issues around module cache paths and install failures when `GOMODCACHE`
-  is wrong (e.g. [golang/vscode-go#2573](https://github.com/golang/vscode-go/issues/2573)).
-- **Ours:** bind `AGENT_LSP_CACHE/gomod/<session>` → `/go/pkg/mod` + `GOPLSCACHE`.
-
-### 4. Apt does not persist in ephemeral containers
-
-- Standard Docker practice: apt only in the **build/install** stage; runtime image stays
-  slim (wheel-builder blogs, cgo/Docker writeups).
-- **Ours (documented trade-off in ADR-0010):** apt runs in throwaway install container and
-  is reapplied on later `install_workspace_deps` via persisted list — **not** baked into
-  the session-held LSP image (ADR-0007).
-
-### 5. Version pinning as a first-class option
-
-- Dev Containers Features expose `version` enums for Python/Node/Go and run `install.sh`
-  (often with apt) — see `devcontainers/features` python/node/go feature definitions.
-- **Ours:** `language_version` → install image (`python:3.11-bookworm`, …) and LSP tag map.
-
-## Gaps / residual risks (from research)
-
-| Risk | Evidence | Mitigation status |
-|------|----------|-------------------|
-| Pyright `venvPath` alone flaky; prefer `pythonPath` | Sublime/LSP-pyright threads; pyright docs | We set both `pythonPath` and `extraPaths` |
-| Multi-version LSP image matrix must be published | Devcontainer images are versioned on Hub | `infra/docker/lsp/Makefile` `versions` target; fallback tag |
-| tsserver needs install **before** warm | Docker/Node guides; tsserver project load | Onboard skill orders deps → ensure → warm |
-| Apt-only without later deps install is a no-op for LSP | Ephemeral container semantics | Docs warn; list persisted for next install |
-| SCIP indexers still need deps present | Sourcegraph scip-python blog | Same invariant as blast/refs |
-
-## What we did **not** copy (and why)
-
-| Alternative | Why not for agent-lsp |
-|-------------|------------------------|
-| Full Dev Container lifecycle per session | Heavier than bollard one-shot install + persistent LSP (ADR-0007) |
-| Bake all deps into LSP images | Breaks arbitrary projects; slow rebuilds (ADR-0010 alternatives) |
-| Host-only pip without versioned containers | Loses hermetic `language_version` |
-
-## GraphQL batching note
-
-Validation used **vmcp `query_graphql` only**, with many **top-level aliases** per
-document (Tavily × N, Context7 resolve/queryDocs, Searchcode, SerpApi) — not sequential
-per-upstream tool calls. `tavily_research` hit a plan rate limit (432); coverage came from
-aliased `tavily_search` + extracts + Context7 + Searchcode instead.
+This report is the canonical validation artifact for ADR-0010. Update only when
+the architecture changes; re-run research with **one aliased `query_graphql`
+document**, not sequential per-tool calls.

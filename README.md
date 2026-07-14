@@ -37,6 +37,20 @@ create_session
   → close_session
 ```
 
+## Runbooks
+
+| Doc | When |
+|-----|------|
+| [`docs/guide/runbook-solo.md`](docs/guide/runbook-solo.md) | Поднять agent-lsp **самостоятельно** |
+| [`docs/guide/runbook-with-vmcp.md`](docs/guide/runbook-with-vmcp.md) | Поднять **вместе с vmcp** (GraphQL aliases) |
+| [`docs/guide/workspace-deps-validation.md`](docs/guide/workspace-deps-validation.md) | Зафиксированный validation-отчёт |
+| [`infra/vmcp/`](infra/vmcp/) | Пример `registry.json` + sidecar |
+
+```bash
+./scripts/verify_runbook.sh solo
+./scripts/verify_runbook.sh with-vmcp   # + checks vmcp source / optional :8765 health
+```
+
 ## Coverage
 
 Python ≠ Rust. Gate = **медиана ≥ 93%** (не среднее).

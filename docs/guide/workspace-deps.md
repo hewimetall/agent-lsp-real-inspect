@@ -43,4 +43,11 @@ Override with `image=` / `install_image=` when needed.
 
 See ADR-0010 and `skills/lsp-onboard/SKILL.md`.
 
-Validation vs similar systems/issues: [`workspace-deps-validation.md`](workspace-deps-validation.md).
+Validation vs similar systems/issues: [`workspace-deps-validation.md`](workspace-deps-validation.md)
+(**Accepted / frozen**).
+
+Raise the stack:
+
+- Solo: [`runbook-solo.md`](runbook-solo.md)
+- With vmcp: [`runbook-with-vmcp.md`](runbook-with-vmcp.md)
+- Check: `./scripts/verify_runbook.sh solo|with-vmcp`
