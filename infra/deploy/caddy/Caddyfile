@@ -1,0 +1,26 @@
+# agent-lsp @ lsp.runmcp.ru — auto HTTPS (Let's Encrypt) + bearer gate
+lsp.runmcp.ru {
+	encode gzip
+
+	# Liveness without leaking tools
+	handle /health {
+		respond "ok" 200
+	}
+
+	@authorized {
+		header Authorization "Bearer {$AGENT_LSP_BEARER_TOKEN}"
+	}
+
+	handle @authorized {
+		reverse_proxy 127.0.0.1:8765 {
+			# MCP streams — do not buffer
+			flush_interval -1
+			header_up -Authorization
+		}
+	}
+
+	handle {
+		header WWW-Authenticate "Bearer realm=\"agent-lsp\""
+		respond "Unauthorized" 401
+	}
+}

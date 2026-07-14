@@ -1,0 +1,21 @@
+[Unit]
+Description=agent-lsp FastMCP (HTTP)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/agent-lsp
+EnvironmentFile=-/etc/agent-lsp/agent-lsp.env
+Environment=FASTMCP_TRANSPORT=http
+Environment=FASTMCP_HOST=127.0.0.1
+Environment=FASTMCP_PORT=8765
+Environment=FASTMCP_SHOW_SERVER_BANNER=false
+ExecStart=/opt/agent-lsp/.venv/bin/agent-lsp
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
