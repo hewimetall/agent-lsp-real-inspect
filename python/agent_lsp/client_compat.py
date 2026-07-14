@@ -12,7 +12,7 @@ import logging
 import os
 from typing import Any
 
-logger = logging.getLogger("agent_lsp.client")
+logger = logging.getLogger("uvicorn.error")
 
 # Long tools that previously used TaskConfig(mode="required").
 SCOUT_LONG_TOOLS = frozenset(
