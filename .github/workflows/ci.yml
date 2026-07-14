@@ -13,7 +13,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: llvm-tools-preview
+          components: llvm-tools-preview, rust-analyzer
       - name: Sync + build native
         run: |
           uv sync --extra dev
@@ -37,7 +37,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: llvm-tools-preview
+          components: llvm-tools-preview, rust-analyzer
       - name: Install cargo-llvm-cov + python link
         run: |
           cargo install cargo-llvm-cov --locked
