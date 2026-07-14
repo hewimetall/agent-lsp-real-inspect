@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -26,16 +27,48 @@ def test_get_runtime_known() -> None:
         get_runtime("cobol")
 
 
-def test_resolve_lsp_command_passthrough_and_rustup(tmp_path: Path) -> None:
+def test_resolve_lsp_command_passthrough_and_rustup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     assert resolve_lsp_command([]) == []
     true_bin = "/usr/bin/true"
     if Path(true_bin).is_file():
         assert resolve_lsp_command([true_bin, "--help"])[0] == true_bin
-    # rust-analyzer should resolve to a real binary, not the rustup shim.
-    resolved = resolve_lsp_command(["rust-analyzer"])
-    assert resolved
-    assert Path(resolved[0]).is_file()
+
+    # Simulate rustup which → real binary (CI often lacks rust-analyzer component).
+    fake_ra = tmp_path / "rust-analyzer"
+    fake_ra.write_text("#!/bin/sh\n", encoding="utf-8")
+    fake_ra.chmod(0o755)
+
+    def fake_check_output(args: list[str], **kwargs: Any) -> str:
+        if args[:2] == ["rustup", "which"]:
+            return str(fake_ra) + "\n"
+        raise subprocess.CalledProcessError(1, args)
+
+    monkeypatch.setattr("agent_lsp.lsp_client.subprocess.check_output", fake_check_output)
+    resolved = resolve_lsp_command(["rust-analyzer", "--version"])
+    assert resolved[0] == str(fake_ra)
+    assert resolved[1:] == ["--version"]
     assert Path(resolved[0]).resolve().name != "rustup"
+
+
+def test_resolve_lsp_command_ignores_rustup_shim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the component is missing, do not treat the rustup proxy as resolved."""
+
+    def boom(*_a: Any, **_k: Any) -> str:
+        raise subprocess.CalledProcessError(1, "rustup")
+
+    rustup = tmp_path / "rustup"
+    rustup.write_text("proxy", encoding="utf-8")
+    rustup.chmod(0o755)
+    shim = tmp_path / "rust-analyzer"
+    shim.symlink_to(rustup)
+
+    monkeypatch.setattr("agent_lsp.lsp_client.subprocess.check_output", boom)
+    monkeypatch.setattr("agent_lsp.lsp_client.shutil.which", lambda _exe: str(shim))
+    assert resolve_lsp_command(["rust-analyzer"]) == ["rust-analyzer"]
 
 
 def test_path_to_uri(tmp_path: Path) -> None:

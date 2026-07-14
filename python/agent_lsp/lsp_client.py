@@ -21,6 +21,9 @@ def resolve_lsp_command(cmd: list[str]) -> list[str]:
     Spawning ``rust-analyzer`` with ``cwd=<project>`` makes the rustup proxy pick the
     project's (or rustup default) toolchain, which may not have the rust-analyzer
     component. Resolve against ``AGENT_LSP_RUSTUP_TOOLCHAIN`` / ``stable`` instead.
+
+    Never returns a rustup proxy shim as a "resolved" path — callers would still hit
+    the wrong toolchain. If no real binary is found, the original argv is returned.
     """
     if not cmd:
         return cmd
@@ -39,16 +42,12 @@ def resolve_lsp_command(cmd: list[str]) -> list[str]:
             cwd="/",
             stderr=subprocess.DEVNULL,
         ).strip()
-        if resolved and Path(resolved).is_file():
+        if resolved and Path(resolved).is_file() and Path(resolved).resolve().name != "rustup":
             return [resolved, *cmd[1:]]
     except (OSError, subprocess.CalledProcessError):
         pass
     which = shutil.which(exe)
-    if which:
-        real = Path(which).resolve()
-        if real.name != "rustup":
-            return [which, *cmd[1:]]
-        # Last resort: pin rustup toolchain via env at spawn time (caller may set it).
+    if which and Path(which).resolve().name != "rustup":
         return [which, *cmd[1:]]
     return cmd
 

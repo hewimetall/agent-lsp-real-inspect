@@ -83,7 +83,14 @@ def test_ensure_local_rejects_container_reuse(tmp_path: Path, monkeypatch: pytes
             self._workspace_loaded = False
 
         @classmethod
-        def spawn_local(cls, root: Path, language_id: str, cmd: list[str]) -> DummyClient:
+        def spawn_local(
+            cls,
+            root: Path,
+            language_id: str,
+            cmd: list[str],
+            *,
+            settings: object | None = None,
+        ) -> DummyClient:
             return cls()
 
         def shutdown(self) -> None:
