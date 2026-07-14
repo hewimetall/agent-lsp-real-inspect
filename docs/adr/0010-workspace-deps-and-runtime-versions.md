@@ -69,3 +69,9 @@ already vendors them.
 | Host-only pip/npm without containers | Breaks hermetic version pins in cloud agents |
 | Strict apt allowlist | Conflicts with “no validation, just build” |
 | Mutate persistent LSP container with apt | Diverges from immutable image + ADR-0007 lifecycle |
+
+## External validation
+
+Cross-check vs Dev Containers / Pyright / gopls / tsserver / SCIP and related GitHub
+issues (vmcp GraphQL aliased batch):
+[`docs/guide/workspace-deps-validation.md`](../guide/workspace-deps-validation.md).

@@ -42,3 +42,5 @@ Call `install_workspace_deps` again with more `packages`. By default the session
 Override with `image=` / `install_image=` when needed.
 
 See ADR-0010 and `skills/lsp-onboard/SKILL.md`.
+
+Validation vs similar systems/issues: [`workspace-deps-validation.md`](workspace-deps-validation.md).
