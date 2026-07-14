@@ -10,14 +10,51 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agent_lsp import env_layout
 from agent_lsp.lsp_client import LspClient, resolve_lsp_command
-from agent_lsp.runtimes import LanguageRuntime, get_runtime
+from agent_lsp.lsp_settings import build_lsp_settings
+from agent_lsp.runtimes import LanguageRuntime, get_runtime, normalize_language, resolve_image
 
 
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return int(s.getsockname()[1])
+
+
+def _cache_binds_and_env(
+    session_id: str, language: str, workspace: Path, workdir: str
+) -> tuple[list[str], list[str]]:
+    """ADR-0009/0010: bind language caches next to the worktree."""
+    lang = normalize_language(language)
+    binds: list[str] = [f"{workspace.resolve()}:{workdir}:rw"]
+    env: list[str] = []
+    if lang == "go":
+        mod = env_layout.go_modcache_host(session_id)
+        gopls = env_layout.gopls_cache_host(session_id)
+        mod.mkdir(parents=True, exist_ok=True)
+        gopls.mkdir(parents=True, exist_ok=True)
+        binds.append(f"{mod.resolve()}:/go/pkg/mod:rw")
+        binds.append(f"{gopls.resolve()}:/cache/gopls:rw")
+        env.extend(
+            [
+                "GOPATH=/go",
+                "GOMODCACHE=/go/pkg/mod",
+                "GOPLSCACHE=/cache/gopls",
+                "GOFLAGS=-mod=mod",
+            ]
+        )
+    elif lang == "typescript":
+        npm = env_layout.npm_cache_host(session_id)
+        npm.mkdir(parents=True, exist_ok=True)
+        binds.append(f"{npm.resolve()}:/cache/npm:rw")
+        env.append("npm_config_cache=/cache/npm")
+    elif lang == "python":
+        pip = env_layout.pip_cache_host(session_id)
+        pip.mkdir(parents=True, exist_ok=True)
+        binds.append(f"{pip.resolve()}:/cache/pip:rw")
+        env.append("PIP_CACHE_DIR=/cache/pip")
+    return binds, env
 
 
 @dataclass
@@ -32,6 +69,8 @@ class SessionRuntime:
     index_status: str = "cold"
     error: str | None = None
     local_proc: subprocess.Popen[bytes] | None = None
+    language_version: str = ""
+    image: str | None = None
 
 
 @dataclass
@@ -70,6 +109,8 @@ class RuntimeHub:
         workspace: Path,
         language: str,
         docker: Any | None = None,
+        *,
+        language_version: str = "",
     ) -> SessionRuntime:
         existing = self.get(session_id)
         if (
@@ -77,6 +118,7 @@ class RuntimeHub:
             and existing.client
             and existing.language == language
             and existing.runtime_mode == "local"
+            and (existing.language_version or "") == (language_version or "")
         ):
             return existing
         if existing is not None:
@@ -92,16 +134,17 @@ class RuntimeHub:
             self.shutdown(session_id, docker=docker_svc)
 
         spec = get_runtime(language)
+        settings = build_lsp_settings(workspace, language, uri_root=None)
         port = _free_port()
         cmd = resolve_lsp_command([c.replace("{port}", str(port)) for c in spec.local_cmd])
         if any("{port}" in c for c in spec.local_cmd):
-            import time
-
             proc: subprocess.Popen[bytes] = subprocess.Popen(cmd, cwd=str(workspace))
             client = None
             for _ in range(50):
                 try:
-                    client = LspClient.connect_tcp(workspace, language, "127.0.0.1", port)
+                    client = LspClient.connect_tcp(
+                        workspace, language, "127.0.0.1", port, settings=settings
+                    )
                     break
                 except Exception:
                     time.sleep(0.1)
@@ -118,9 +161,10 @@ class RuntimeHub:
                 client=client,
                 index_status="warming",
                 local_proc=proc,
+                language_version=language_version or "",
             )
         else:
-            client = LspClient.spawn_local(workspace, language, cmd)
+            client = LspClient.spawn_local(workspace, language, cmd, settings=settings)
             rt = SessionRuntime(
                 session_id=session_id,
                 workspace_path=workspace,
@@ -131,6 +175,7 @@ class RuntimeHub:
                 client=client,
                 index_status="warming",
                 local_proc=None,
+                language_version=language_version or "",
             )
         with self._lock:
             self.sessions[session_id] = rt
@@ -143,36 +188,42 @@ class RuntimeHub:
         language: str,
         docker: Any,
         image_override: str | None = None,
+        *,
+        language_version: str = "",
     ) -> SessionRuntime:
+        image = image_override or resolve_image(language, language_version)
         existing = self.get(session_id)
         if (
             existing
             and existing.client
             and existing.language == language
             and existing.runtime_mode == "container"
+            and (existing.language_version or "") == (language_version or "")
+            and (existing.image or "") == image
         ):
             return existing
         if existing is not None:
             self.shutdown(session_id, docker=docker)
 
         spec: LanguageRuntime = get_runtime(language)
-        image = image_override or spec.image
         host_port = _free_port()
-        binds = [f"{workspace.resolve()}:{spec.container_workdir}:rw"]
+        binds, env = _cache_binds_and_env(
+            session_id, language, workspace, spec.container_workdir
+        )
         started = docker.start_persistent(
             image,
             spec.cmd,
             binds=binds,
             workdir=spec.container_workdir,
-            env=[],
+            env=env,
             host_port=host_port,
             container_port=3737,
-            name=f"agent-lsp-{session_id[:8]}-{language}",
+            name=f"agent-lsp-{session_id[:8]}-{normalize_language(language)}",
         )
         cid = started["container_id"]
         published = started.get("host_port") or host_port
-
-        import time
+        uri_root = Path(spec.container_workdir)
+        settings = build_lsp_settings(workspace, language, uri_root=uri_root)
 
         client = None
         last_err: Exception | None = None
@@ -183,7 +234,8 @@ class RuntimeHub:
                     language,
                     "127.0.0.1",
                     int(published),
-                    uri_root=Path(spec.container_workdir),
+                    uri_root=uri_root,
+                    settings=settings,
                 )
                 break
             except Exception as exc:  # noqa: BLE001
@@ -206,10 +258,23 @@ class RuntimeHub:
             host_port=int(published),
             client=client,
             index_status="warming",
+            language_version=language_version or "",
+            image=image,
         )
         with self._lock:
             self.sessions[session_id] = rt
         return rt
+
+    def refresh_settings(self, session_id: str) -> None:
+        rt = self.get(session_id)
+        if rt is None or rt.client is None:
+            return
+        uri_root = rt.client.uri_root
+        settings = build_lsp_settings(rt.workspace_path, rt.language, uri_root=uri_root)
+        try:
+            rt.client.apply_settings(settings)
+        except Exception:
+            pass
 
     def warm(self, session_id: str, timeout: float = 120.0) -> SessionRuntime:
         rt = self.get(session_id)
@@ -278,13 +343,14 @@ def _find_seed_file(root: Path, language: str) -> Path | None:
         "typescript": ["**/*.{ts,tsx}"],
         "rust": ["**/*.rs"],
     }
-    for pattern in patterns.get(language, ["**/*"]):
+    skip = {"node_modules", "target", ".venv", env_layout.AGENT_LSP_DIR, "vendor"}
+    for pattern in patterns.get(normalize_language(language), ["**/*"]):
         if "{ts,tsx}" in pattern:
             cands = list(root.glob("**/*.ts")) + list(root.glob("**/*.tsx"))
         else:
             cands = list(root.glob(pattern))
         for p in cands:
-            if p.is_file() and "node_modules" not in p.parts and "target" not in p.parts:
+            if p.is_file() and not any(part in skip for part in p.parts):
                 return p
     return None
 

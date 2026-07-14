@@ -16,6 +16,7 @@ Context / Decision / Consequences. Этот каталог = **ADL** (журна
 | [0007](0007-session-held-containers.md) | D4 | Accepted | Сессии держат контейнеры (bollard) |
 | [0008](0008-coverage-median-split.md) | D5 | Accepted | Coverage: median ≥93%, Rust ≠ Python |
 | [0009](0009-lsp-cache-volumes-and-warm-index.md) | D6 | Accepted | Cache volumes + warm_index readiness per LSP |
+| [0010](0010-workspace-deps-and-runtime-versions.md) | D7 | Accepted | Language versions + deps/apt install for LSP resolution |
 
 ## Как добавить ADR
 

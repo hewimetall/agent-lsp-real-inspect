@@ -3,7 +3,10 @@
 ARG NODE_VERSION=22
 FROM node:${NODE_VERSION}-bookworm-slim
 
-RUN npm install -g typescript typescript-language-server \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g typescript typescript-language-server \
     && typescript-language-server --version
 
 COPY common/stdio_tcp_bridge.py /usr/local/bin/stdio-tcp-bridge

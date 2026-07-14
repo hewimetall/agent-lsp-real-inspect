@@ -188,6 +188,8 @@ class LspClient:
     # When the LSP runs in a container, host `root` is bind-mounted at `uri_root`
     # (e.g. /workspace). All LSP URIs must use the container path; file IO stays on host.
     uri_root: Path | None = None
+    # workspace/configuration + didChangeConfiguration payload (venv, extraPaths, …).
+    settings: dict[str, Any] = field(default_factory=dict)
     _next_id: int = 1
     _pending: dict[int, dict[str, Any] | None] = field(default_factory=dict)
     _reader: threading.Thread | None = None
@@ -206,17 +208,29 @@ class LspClient:
         port: int,
         *,
         uri_root: Path | None = None,
+        settings: dict[str, Any] | None = None,
     ) -> LspClient:
         transport = TcpTransport(host, port)
         client = cls(
-            root=root, language_id=language_id, transport=transport, uri_root=uri_root
+            root=root,
+            language_id=language_id,
+            transport=transport,
+            uri_root=uri_root,
+            settings=dict(settings or {}),
         )
         client._start_reader()
         client.initialize()
         return client
 
     @classmethod
-    def spawn_local(cls, root: Path, language_id: str, cmd: list[str]) -> LspClient:
+    def spawn_local(
+        cls,
+        root: Path,
+        language_id: str,
+        cmd: list[str],
+        *,
+        settings: dict[str, Any] | None = None,
+    ) -> LspClient:
         resolved = resolve_lsp_command(cmd)
         # Discard stderr so a chatty language server cannot fill the PIPE and deadlock.
         # Keep a DEVNULL handle (not None) so the child does not inherit the parent tty.
@@ -228,7 +242,12 @@ class LspClient:
             cwd=str(root),
         )
         transport = StdioTransport(proc)
-        client = cls(root=root, language_id=language_id, transport=transport)
+        client = cls(
+            root=root,
+            language_id=language_id,
+            transport=transport,
+            settings=dict(settings or {}),
+        )
         client._start_reader()
         client.initialize()
         return client
@@ -262,10 +281,13 @@ class LspClient:
                 rid = msg.get("id")
                 if rid is not None:
                     result: Any = None
-                    if msg.get("method") == "workspace/configuration":
+                    method = msg.get("method")
+                    if method == "workspace/configuration":
+                        from agent_lsp.lsp_settings import configuration_items_response
+
                         items = ((msg.get("params") or {}).get("items")) or []
-                        result = [{} for _ in items]
-                    elif msg.get("method") == "workspace/workspaceFolders":
+                        result = configuration_items_response(items, self.settings)
+                    elif method == "workspace/workspaceFolders":
                         lsp_root = self.uri_root if self.uri_root is not None else self.root
                         result = [
                             {
@@ -303,6 +325,10 @@ class LspClient:
             except ValueError:
                 pass
         return remote
+
+    def apply_settings(self, settings: dict[str, Any]) -> None:
+        self.settings = dict(settings)
+        self.notify("workspace/didChangeConfiguration", {"settings": self.settings})
 
     def request(self, method: str, params: dict[str, Any] | None = None, timeout: float = 60.0) -> Any:
         # rust-analyzer (and others) may reply -32801 ContentModified while the
@@ -390,6 +416,8 @@ class LspClient:
             timeout=120.0,
         )
         self.notify("initialized", {})
+        if self.settings:
+            self.notify("workspace/didChangeConfiguration", {"settings": self.settings})
         _ = result
 
     def is_workspace_loaded(self) -> bool:

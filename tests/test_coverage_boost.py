@@ -84,7 +84,14 @@ def test_runtime_hub_ensure_local_stdio(tmp_path: Path, monkeypatch: pytest.Monk
             self._workspace_loaded = False
 
         @classmethod
-        def spawn_local(cls, root: Path, language_id: str, cmd: list[str]) -> DummyClient:
+        def spawn_local(
+            cls,
+            root: Path,
+            language_id: str,
+            cmd: list[str],
+            *,
+            settings: dict[str, Any] | None = None,
+        ) -> DummyClient:
             return cls()
 
         def wait_until_ready(self, timeout: float = 120.0) -> bool:

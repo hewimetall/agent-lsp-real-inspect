@@ -23,7 +23,9 @@
    (SEP-1686 wait + `notifications/tasks/status`).
 4. `get_task_status(task_id)` — инспекция SQLite-строки (опционально).
 
-Targets v1: `import_project` | `ensure_runtime` | `warm_index`.
+# ADR-0001 targets (extended by ADR-0010)
+Targets: `import_project` | `ensure_runtime` | `warm_index` |
+`install_workspace_deps` | `install_apt_packages`.
 
 ## Consequences
 

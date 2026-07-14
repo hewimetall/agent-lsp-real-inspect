@@ -1,10 +1,11 @@
-"""Background scout worker: claim_next → import / ensure_runtime / warm_index."""
+"""Background scout worker: claim_next → import / ensure / deps / warm."""
 
 from __future__ import annotations
 
 import json
 import logging
 import os
+import subprocess
 import threading
 from pathlib import Path
 from typing import Any, cast
@@ -14,7 +15,15 @@ from agent_lsp._tasks import TaskStore
 logger = logging.getLogger(__name__)
 
 POLL_SECONDS = float(os.environ.get("AGENT_LSP_WORKER_POLL_SECONDS", "0.5"))
-SCOUT_TARGETS = frozenset({"import_project", "ensure_runtime", "warm_index"})
+SCOUT_TARGETS = frozenset(
+    {
+        "import_project",
+        "ensure_runtime",
+        "warm_index",
+        "install_workspace_deps",
+        "install_apt_packages",
+    }
+)
 
 
 def _as_task(row: object) -> dict[str, Any]:
@@ -37,7 +46,6 @@ class ScoutWorker:
     def start_daemon(self) -> None:
         if self._thread is not None and self._thread.is_alive():
             return
-        # Single-worker: any leftover `running` rows are orphaned from a prior process.
         try:
             self._tasks.reclaim_stale(0)
         except Exception:
@@ -89,6 +97,10 @@ class ScoutWorker:
                 self._import_project(tid, task)
             elif target == "ensure_runtime":
                 self._ensure_runtime(tid, task)
+            elif target == "install_workspace_deps":
+                self._install_workspace_deps(tid, task)
+            elif target == "install_apt_packages":
+                self._install_apt_packages(tid, task)
             else:
                 self._warm_index(tid, task)
         except Exception as exc:  # noqa: BLE001
@@ -121,11 +133,14 @@ class ScoutWorker:
     def _ensure_runtime(self, tid: str, task: dict[str, Any]) -> None:
         from agent_lsp import server
         from agent_lsp.runtime_hub import HUB
+        from agent_lsp.runtimes import resolve_image
 
         payload = self._payload(task)
         session_id = str(task.get("session_id") or "")
         language = str(payload.get("language") or "")
         prefer_container = bool(payload.get("prefer_container", True))
+        language_version = str(payload.get("language_version") or "")
+        image = str(payload.get("image") or "")
         if not session_id or not language:
             self._tasks.update(tid, status="error", error="missing session_id/language")
             return
@@ -135,21 +150,39 @@ class ScoutWorker:
             return
         _, ws = bound
         workspace = Path(ws["path"])
-        # Keep a Docker handle even when prefer_container=False so replacing a
-        # prior container runtime can stop/remove the orphaned container.
         docker = server.get_docker()
+        resolved = resolve_image(language, language_version, image)
         if prefer_container and docker is not None:
             try:
-                rt = HUB.ensure_container(session_id, workspace, language, docker)
+                rt = HUB.ensure_container(
+                    session_id,
+                    workspace,
+                    language,
+                    docker,
+                    image_override=resolved,
+                    language_version=language_version,
+                )
             except Exception as exc:  # noqa: BLE001
-                rt = HUB.ensure_local(session_id, workspace, language, docker=docker)
+                rt = HUB.ensure_local(
+                    session_id,
+                    workspace,
+                    language,
+                    docker=docker,
+                    language_version=language_version,
+                )
                 self._tasks.update(tid, logs=f"container fallback: {exc}")
         else:
-            rt = HUB.ensure_local(session_id, workspace, language, docker=docker)
+            rt = HUB.ensure_local(
+                session_id,
+                workspace,
+                language,
+                docker=docker,
+                language_version=language_version,
+            )
         server.get_state().bind_container(
             session_id,
             rt.container_id or "unknown",
-            image=language,
+            image=rt.image or resolved,
             language=language,
             host_port=rt.host_port,
             runtime_mode=rt.runtime_mode,
@@ -158,12 +191,272 @@ class ScoutWorker:
         result = {
             "session_id": session_id,
             "language": language,
+            "language_version": language_version or None,
+            "image": rt.image or resolved,
             "runtime_mode": rt.runtime_mode,
             "container_id": rt.container_id,
             "host_port": rt.host_port,
             "index_status": "warming",
         }
         self._tasks.update(tid, status="done", artifact=json.dumps(result))
+
+    def _run_script(
+        self,
+        *,
+        workspace: Path,
+        image: str,
+        script: str,
+        env: list[str] | None = None,
+        binds: list[str] | None = None,
+    ) -> dict[str, Any]:
+        from agent_lsp import server
+
+        docker = server.get_docker()
+        cmd = ["bash", "-lc", script]
+        if docker is not None:
+            result = docker.run(
+                image,
+                cmd,
+                binds=binds or [f"{workspace.resolve()}:/workspace:rw"],
+                workdir="/workspace",
+                env=env or [],
+                auto_remove=True,
+            )
+            return {
+                "mode": "container",
+                "image": image,
+                "status_code": result.get("status_code"),
+                "logs": (result.get("logs") or "")[-8000:],
+                "container_id": result.get("container_id"),
+            }
+        completed = subprocess.run(
+            cmd,
+            cwd=str(workspace),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        logs = (completed.stdout or "") + (completed.stderr or "")
+        return {
+            "mode": "local",
+            "image": None,
+            "status_code": completed.returncode,
+            "logs": logs[-8000:],
+            "container_id": None,
+        }
+
+    def _install_workspace_deps(self, tid: str, task: dict[str, Any]) -> None:
+        from agent_lsp import env_layout, server
+        from agent_lsp.deps import build_deps_plan
+        from agent_lsp.runtime_hub import HUB
+
+        payload = self._payload(task)
+        session_id = str(task.get("session_id") or "")
+        if not session_id:
+            self._tasks.update(tid, status="error", error="missing session_id")
+            return
+        bound = server._active_workspace(session_id)
+        if isinstance(bound, dict):
+            self._tasks.update(tid, status="error", error=json.dumps(bound))
+            return
+        _, ws = bound
+        workspace = Path(ws["path"])
+        rt = HUB.get(session_id)
+        language = str(payload.get("language") or (rt.language if rt else "") or "")
+        language_version = str(
+            payload.get("language_version")
+            or (rt.language_version if rt else "")
+            or ""
+        )
+        if not language:
+            self._tasks.update(
+                tid,
+                status="error",
+                error="missing language (pass language= or call ensure_runtime first)",
+            )
+            return
+        packages = payload.get("packages") or []
+        apt_packages = payload.get("apt_packages") or []
+        if not isinstance(packages, list):
+            packages = []
+        if not isinstance(apt_packages, list):
+            apt_packages = []
+        extra_args = payload.get("extra_args") or []
+        if not isinstance(extra_args, list):
+            extra_args = []
+        manager = str(payload.get("manager") or "auto")
+        restart_runtime = bool(payload.get("restart_runtime", True))
+
+        env_layout.ensure_agent_lsp_dir(workspace)
+        plan = build_deps_plan(
+            workspace,
+            language,
+            language_version=language_version,
+            manager=manager,
+            packages=[str(p) for p in packages],
+            apt_packages=[str(p) for p in apt_packages],
+            extra_args=[str(a) for a in extra_args],
+            install_image=str(payload.get("install_image") or ""),
+        )
+        binds = [f"{workspace.resolve()}:/workspace:rw"]
+        env: list[str] = []
+        if plan.language == "go":
+            mod = env_layout.go_modcache_host(session_id)
+            mod.mkdir(parents=True, exist_ok=True)
+            binds.append(f"{mod.resolve()}:/go/pkg/mod:rw")
+            env.extend(["GOPATH=/go", "GOMODCACHE=/go/pkg/mod"])
+        elif plan.language == "python":
+            pip = env_layout.pip_cache_host(session_id)
+            pip.mkdir(parents=True, exist_ok=True)
+            binds.append(f"{pip.resolve()}:/cache/pip:rw")
+            env.append("PIP_CACHE_DIR=/cache/pip")
+        elif plan.language == "typescript":
+            npm = env_layout.npm_cache_host(session_id)
+            npm.mkdir(parents=True, exist_ok=True)
+            binds.append(f"{npm.resolve()}:/cache/npm:rw")
+            env.append("npm_config_cache=/cache/npm")
+
+        run = self._run_script(
+            workspace=workspace,
+            image=plan.install_image,
+            script=plan.script,
+            env=env,
+            binds=binds,
+        )
+        status_code = run.get("status_code")
+        ok = status_code is not None and int(status_code) == 0
+        site = [str(p) for p in env_layout.discover_site_packages(workspace)]
+        artifact = {
+            "session_id": session_id,
+            "language": plan.language,
+            "language_version": plan.language_version or None,
+            "manager": plan.manager,
+            "packages": list(plan.packages),
+            "apt_packages": list(plan.apt_packages),
+            "install_image": plan.install_image,
+            "site_packages": site,
+            "venv": str(env_layout.venv_path(workspace)) if plan.language == "python" else None,
+            "node_modules": str(env_layout.node_modules_path(workspace))
+            if plan.language == "typescript"
+            else None,
+            "run": run,
+            "restarted_runtime": False,
+        }
+        if not ok:
+            self._tasks.update(
+                tid,
+                status="error",
+                artifact=json.dumps(artifact),
+                error=f"install failed status_code={run.get('status_code')}",
+                logs=str(run.get("logs") or "")[-4000:],
+            )
+            return
+
+        if restart_runtime and rt is not None:
+            docker = server.get_docker()
+            prefer_container = rt.runtime_mode == "container"
+            lang = rt.language
+            ver = rt.language_version
+            image = rt.image
+            HUB.shutdown(session_id, docker=docker)
+            if prefer_container and docker is not None:
+                try:
+                    HUB.ensure_container(
+                        session_id,
+                        workspace,
+                        lang,
+                        docker,
+                        image_override=image,
+                        language_version=ver,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    HUB.ensure_local(
+                        session_id, workspace, lang, docker=docker, language_version=ver
+                    )
+                    artifact["restart_fallback"] = str(exc)
+            else:
+                HUB.ensure_local(
+                    session_id, workspace, lang, docker=docker, language_version=ver
+                )
+            artifact["restarted_runtime"] = True
+            server.get_state().set_index_status(session_id, "cold")
+        elif rt is not None:
+            HUB.refresh_settings(session_id)
+
+        self._tasks.update(
+            tid,
+            status="done",
+            artifact=json.dumps(artifact),
+            logs=str(run.get("logs") or "")[-4000:],
+        )
+
+    def _install_apt_packages(self, tid: str, task: dict[str, Any]) -> None:
+        from agent_lsp import env_layout, server
+        from agent_lsp.deps import build_apt_only_script
+        from agent_lsp.runtime_hub import HUB
+        from agent_lsp.runtimes import resolve_install_image
+
+        payload = self._payload(task)
+        session_id = str(task.get("session_id") or "")
+        packages = payload.get("packages") or []
+        if not session_id:
+            self._tasks.update(tid, status="error", error="missing session_id")
+            return
+        if not isinstance(packages, list) or not packages:
+            self._tasks.update(tid, status="error", error="packages must be a non-empty list")
+            return
+        bound = server._active_workspace(session_id)
+        if isinstance(bound, dict):
+            self._tasks.update(tid, status="error", error=json.dumps(bound))
+            return
+        _, ws = bound
+        workspace = Path(ws["path"])
+        rt = HUB.get(session_id)
+        language = str(payload.get("language") or (rt.language if rt else "python") or "python")
+        language_version = str(
+            payload.get("language_version") or (rt.language_version if rt else "") or ""
+        )
+        # Persist list for later install_workspace_deps (no allowlist validation).
+        merged = env_layout.append_apt_packages(workspace, [str(p) for p in packages])
+        script = build_apt_only_script(merged)
+        image = str(payload.get("install_image") or "") or resolve_install_image(
+            language, language_version
+        )
+        run = self._run_script(
+            workspace=workspace,
+            image=image,
+            script=script,
+            binds=[f"{workspace.resolve()}:/workspace:rw"],
+        )
+        artifact = {
+            "session_id": session_id,
+            "packages": merged,
+            "install_image": image,
+            "note": (
+                "apt packages are installed in a throwaway container for bootstrap; "
+                "the list is persisted in .agent-lsp/apt-packages.txt and reapplied "
+                "on install_workspace_deps"
+            ),
+            "apt_packages_file": str(env_layout.apt_packages_file(workspace)),
+            "run": run,
+        }
+        status_code = run.get("status_code")
+        ok = status_code is not None and int(status_code) == 0
+        if ok:
+            self._tasks.update(
+                tid,
+                status="done",
+                artifact=json.dumps(artifact),
+                logs=str(run.get("logs") or "")[-4000:],
+            )
+        else:
+            self._tasks.update(
+                tid,
+                status="error",
+                artifact=json.dumps(artifact),
+                error=f"apt install failed status_code={run.get('status_code')}",
+                logs=str(run.get("logs") or "")[-4000:],
+            )
 
     def _warm_index(self, tid: str, task: dict[str, Any]) -> None:
         from agent_lsp import server
@@ -183,6 +476,7 @@ class ScoutWorker:
             "index_status": rt.index_status,
             "indexed": indexed,
             "language": rt.language,
+            "language_version": rt.language_version or None,
             "runtime_mode": rt.runtime_mode,
             "error": rt.error,
         }
@@ -209,7 +503,6 @@ def wake_worker(tasks: TaskStore) -> ScoutWorker:
             _worker = ScoutWorker(tasks)
             _worker.start_daemon()
         else:
-            # Keep worker bound to latest store handle.
             _worker._tasks = tasks
         _worker.wake()
         return _worker

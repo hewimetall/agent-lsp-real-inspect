@@ -1,0 +1,85 @@
+{
+  "server": "agent-lsp",
+  "tools": [
+    {
+      "name": "import_project",
+      "read_only": false,
+      "task_support": "required",
+      "description": "Clone/import bare repo (gix). MCP task=True required."
+    },
+    {
+      "name": "ensure_runtime",
+      "read_only": false,
+      "task_support": "required",
+      "description": "Start session LSP (container or local). language_version / image optional."
+    },
+    {
+      "name": "warm_index",
+      "read_only": false,
+      "task_support": "required",
+      "description": "Warm LSP index / readiness gate."
+    },
+    {
+      "name": "install_workspace_deps",
+      "read_only": false,
+      "task_support": "required",
+      "description": "Install pip/npm/go deps (+ optional apt) into workspace."
+    },
+    {
+      "name": "install_apt_packages",
+      "read_only": false,
+      "task_support": "required",
+      "description": "Apt bootstrap without allowlist; persisted for later installs."
+    },
+    {
+      "name": "blast_radius",
+      "read_only": true,
+      "task_support": "forbidden"
+    },
+    {
+      "name": "list_symbols",
+      "read_only": true,
+      "task_support": "forbidden"
+    },
+    {
+      "name": "find_references",
+      "read_only": true,
+      "task_support": "forbidden"
+    },
+    {
+      "name": "explore_symbol",
+      "read_only": true,
+      "task_support": "forbidden"
+    },
+    {
+      "name": "inspect_symbol",
+      "read_only": true,
+      "task_support": "forbidden"
+    },
+    {
+      "name": "go_to_definition",
+      "read_only": true,
+      "task_support": "forbidden"
+    },
+    {
+      "name": "create_session",
+      "read_only": false,
+      "task_support": "forbidden"
+    },
+    {
+      "name": "checkout_workspace",
+      "read_only": false,
+      "task_support": "forbidden"
+    },
+    {
+      "name": "get_session",
+      "read_only": true,
+      "task_support": "forbidden"
+    },
+    {
+      "name": "close_session",
+      "read_only": false,
+      "task_support": "forbidden"
+    }
+  ]
+}
