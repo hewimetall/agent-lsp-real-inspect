@@ -7,7 +7,7 @@ RUST_CRATES := . packages/agent-lsp-state packages/agent-lsp-git packages/agent-
 develop:
 	@set -e; for d in $(RUST_CRATES); do \
 		echo "==> maturin develop $$d"; \
-		(cd $$d && maturin develop); \
+		(cd $$d && uv run maturin develop); \
 	done
 	uv sync --extra dev
 

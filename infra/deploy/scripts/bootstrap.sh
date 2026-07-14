@@ -44,8 +44,10 @@ fi
 cd "$INSTALL_ROOT"
 
 echo "==> python / maturin"
+export PATH="$(pwd)/.venv/bin:$HOME/.local/bin:/root/.local/bin:$PATH"
 uv sync --extra dev
-make develop
+# Prefer uv-run maturin so PATH need not include .venv yet
+uv run make develop || make develop
 
 mkdir -p "$DATA_ROOT"/{state,projects,workspaces,cache} /etc/agent-lsp
 
