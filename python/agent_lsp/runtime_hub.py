@@ -5,6 +5,7 @@ from __future__ import annotations
 import socket
 import subprocess
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -178,7 +179,11 @@ class RuntimeHub:
         for _ in range(80):
             try:
                 client = LspClient.connect_tcp(
-                    workspace, language, "127.0.0.1", int(published)
+                    workspace,
+                    language,
+                    "127.0.0.1",
+                    int(published),
+                    uri_root=Path(spec.container_workdir),
                 )
                 break
             except Exception as exc:  # noqa: BLE001
@@ -212,7 +217,10 @@ class RuntimeHub:
             raise RuntimeError(f"no runtime for session {session_id}")
         rt.index_status = "warming"
         rt.error = None
-        ready = rt.client.wait_until_ready(timeout=timeout)
+        # Many servers (pyright, gopls) never emit workDoneProgress end. Bound the
+        # wait so seed probing can still finish inside the MCP task budget.
+        progress_budget = min(15.0, max(3.0, timeout * 0.15))
+        ready = rt.client.wait_until_ready(timeout=progress_budget)
         seed = _find_seed_file(rt.workspace_path, rt.language)
         probed = False
         if seed is not None:
