@@ -23,3 +23,8 @@ scout workspaces.
 - Disk / network cost is operator-controlled (`depth=1` default for large trees).
 - `cngp` and other private URLs stay empty until filled in TOML.
 - Deploy bootstrap creates `…/mirrors` and points `AGENT_LSP_MIRRORS(_TOML)`.
+- Empty `mirror:` / `mirror://` fail closed (not passed to `clone_bare`).
+- Direct git URL / local-path `import_project` remains available to bearer holders
+  (mirrors are an operational optimization, not an egress policy).
+- `paths.mirrors_dir()` and `mirrors.mirrors_root()` share one resolution rule;
+  `mirror-sync.py` prefers the catalog next to the script’s repo checkout.

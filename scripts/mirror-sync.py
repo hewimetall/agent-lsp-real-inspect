@@ -140,13 +140,21 @@ def cmd_sync(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    # Ensure in-repo toml is found when run from elsewhere.
-    os.environ.setdefault("AGENT_LSP_MIRRORS_TOML", str(mirrors_toml_path().resolve()))
-    # Prefer repo-relative discovery when cwd is repo.
-    if (Path.cwd() / "infra/mirrors/mirrors.toml").is_file():
-        os.environ["AGENT_LSP_MIRRORS_TOML"] = str(
-            (Path.cwd() / "infra/mirrors/mirrors.toml").resolve()
-        )
+    # Prefer the repo that contains this script, then cwd, then env/defaults.
+    # Never silently pick /opt catalog when invoked from another checkout.
+    repo_toml = _REPO / "infra" / "mirrors" / "mirrors.toml"
+    if not (os.environ.get("AGENT_LSP_MIRRORS_TOML") or "").strip():
+        if repo_toml.is_file():
+            os.environ["AGENT_LSP_MIRRORS_TOML"] = str(repo_toml.resolve())
+        elif (Path.cwd() / "infra/mirrors/mirrors.toml").is_file():
+            os.environ["AGENT_LSP_MIRRORS_TOML"] = str(
+                (Path.cwd() / "infra/mirrors/mirrors.toml").resolve()
+            )
+        else:
+            os.environ.setdefault(
+                "AGENT_LSP_MIRRORS_TOML",
+                str(mirrors_toml_path(prefer=repo_toml)),
+            )
 
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)

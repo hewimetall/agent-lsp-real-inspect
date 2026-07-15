@@ -46,7 +46,10 @@ notes: explore src/pybind/mgr
    export AGENT_LSP_MIRRORS_TOML=${AGENT_LSP_MIRRORS_TOML:-/opt/agent-lsp/infra/mirrors/mirrors.toml}
    uv run python scripts/mirror-sync.py sync <ids…>
    ```
+   Prefer running the script from the agent-lsp checkout (it loads
+   `<repo>/infra/mirrors/mirrors.toml` next to the script).
    If `url` empty in TOML (e.g. `cngp`) — stop and ask for URL; do not invent one.
+   Never use bare `mirror:` / `mirror://` as `source`.
 2. `create_session`
 3. For each id: `import_project(project_id=<id>, source="mirror:<id>")`
 4. `checkout_workspace(session_id, project_id=<id>)` (first id if several)

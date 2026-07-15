@@ -38,6 +38,18 @@ uv run python scripts/mirror-sync.py sync ceph --force
 Uses **git CLI** (shallow `--depth` or `--mirror`). Scout import still uses
 gix (`import_local` from the bare path) — no network at MCP time.
 
+## Fail-closed rules
+
+| Source | Behavior |
+|--------|----------|
+| `mirror:ceph` (synced) | `import_local` from `AGENT_LSP_MIRRORS/ceph.git` |
+| `mirror:ceph` (missing bare) | error — run `mirror-sync.py sync ceph` |
+| `mirror:` / `mirror://` (empty id) | error — never treated as a git URL |
+| `mirror:cngp` with empty `url=` | error — fill TOML first |
+| `https://…` / local path | unchanged (pre-existing); mirrors are operational, not an egress allowlist |
+
+Symlink escapes out of `AGENT_LSP_MIRRORS` are rejected after `resolve()`.
+
 ## Chat prompt template
 
 Copy into chat and fill:

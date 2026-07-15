@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agent_lsp import paths as paths_mod
+from agent_lsp.paths import require_id
 
 # Repo-relative default; override with AGENT_LSP_MIRRORS_TOML.
 _DEFAULT_TOML_CANDIDATES = (
@@ -38,7 +39,7 @@ class MirrorCatalog:
     toml_path: Path
 
     def get(self, mirror_id: str) -> MirrorEntry:
-        key = mirror_id.strip().lower()
+        key = require_id(mirror_id.strip(), "mirror_id").lower()
         if key not in self.entries:
             known = ", ".join(sorted(self.entries)) or "(empty)"
             raise KeyError(f"unknown mirror {mirror_id!r}; known: {known}")
@@ -49,32 +50,24 @@ class MirrorCatalog:
 
 
 def mirrors_root() -> Path:
-    """Bare clones live here: ``<id>.git``."""
-    override = (os.environ.get("AGENT_LSP_MIRRORS") or "").strip()
-    if override:
-        return Path(override)
-    # Prefer sibling of projects when AGENT_LSP_PROJECTS is absolute-ish layout.
-    projects = Path(paths_mod.PROJECTS_DIR)
-    if projects.is_absolute() or str(projects) not in {"projects", "."}:
-        sibling = projects.parent / "mirrors"
-        return sibling
-    return Path("mirrors")
+    """Bare clones live here: ``<id>.git`` — same rule as ``paths.mirrors_dir``."""
+    return paths_mod.mirrors_dir()
 
 
-def mirrors_toml_path() -> Path:
+def mirrors_toml_path(*, prefer: Path | None = None) -> Path:
     override = (os.environ.get("AGENT_LSP_MIRRORS_TOML") or "").strip()
     if override:
         return Path(override)
+    if prefer is not None and prefer.is_file():
+        return prefer
     for cand in _DEFAULT_TOML_CANDIDATES:
         if cand.is_file():
             return cand
     # Prefer in-repo path even if missing (clearer errors).
-    return _DEFAULT_TOML_CANDIDATES[0]
+    return prefer or _DEFAULT_TOML_CANDIDATES[0]
 
 
 def mirror_bare_path(mirror_id: str, root: Path | None = None) -> Path:
-    from agent_lsp.paths import require_id
-
     mid = require_id(mirror_id, "mirror_id")
     return (root or mirrors_root()) / f"{mid}.git"
 
@@ -100,6 +93,7 @@ def load_catalog(toml_path: Path | None = None) -> MirrorCatalog:
         mid = str(item.get("id") or "").strip()
         if not mid:
             continue
+        mid = require_id(mid, "mirror_id")
         tags_raw = item.get("tags") or []
         tags = tuple(str(t) for t in tags_raw) if isinstance(tags_raw, list) else ()
         depth = int(item.get("depth") or 1)
@@ -122,17 +116,26 @@ def load_catalog(toml_path: Path | None = None) -> MirrorCatalog:
 
 
 def parse_mirror_source(source: str) -> str | None:
-    """Return mirror id if ``source`` is ``mirror:id`` / ``mirror://id``, else None."""
+    """Return mirror id if ``source`` is ``mirror:id`` / ``mirror://id``.
+
+    Returns ``None`` for non-mirror sources. Raises ``ValueError`` for the
+    mirror prefix with an empty id (``mirror:`` / ``mirror://``) so callers
+    fail closed instead of treating it as a remote URL.
+    """
     s = (source or "").strip()
     if not s:
         return None
     lower = s.lower()
     if lower.startswith("mirror://"):
         mid = s[len("mirror://") :].strip().strip("/")
-        return mid or None
+        if not mid:
+            raise ValueError("empty mirror id (expected mirror://<id>)")
+        return mid
     if lower.startswith("mirror:"):
         mid = s[len("mirror:") :].strip().strip("/")
-        return mid or None
+        if not mid:
+            raise ValueError("empty mirror id (expected mirror:<id>)")
+        return mid
     return None
 
 
@@ -145,6 +148,8 @@ def resolve_source(source: str) -> Path | str:
     mid = parse_mirror_source(source)
     if mid is None:
         return source
+    # Validate id shape before catalog lookup / path assembly.
+    require_id(mid.strip(), "mirror_id")
     catalog = load_catalog()
     entry = catalog.get(mid)
     if not entry.syncable:
@@ -153,11 +158,19 @@ def resolve_source(source: str) -> Path | str:
             "set url= then run: uv run python scripts/mirror-sync.py sync "
             f"{entry.id}"
         )
-    bare = mirror_bare_path(entry.id)
+    root = mirrors_root()
+    bare = mirror_bare_path(entry.id, root)
     if not bare.exists():
         raise FileNotFoundError(
             f"mirror {entry.id!r} not synced at {bare}; "
             f"run: uv run python scripts/mirror-sync.py sync {entry.id}"
         )
-    # Prefer resolved path so gix import_local / clone sees a real directory.
-    return bare.resolve()
+    resolved = bare.resolve()
+    root_resolved = root.resolve()
+    try:
+        resolved.relative_to(root_resolved)
+    except ValueError as exc:
+        raise ValueError(
+            f"mirror bare escapes mirrors root: {resolved} (root={root_resolved})"
+        ) from exc
+    return resolved
