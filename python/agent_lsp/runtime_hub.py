@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import socket
 import subprocess
 import threading
@@ -14,6 +15,15 @@ from agent_lsp import env_layout
 from agent_lsp.lsp_client import LspClient, resolve_lsp_command
 from agent_lsp.lsp_settings import build_lsp_settings
 from agent_lsp.runtimes import LanguageRuntime, get_runtime, normalize_language, resolve_image
+
+
+def allow_local_runtime() -> bool:
+    """Local LSP is test/dev escape hatch only — production is Docker-only."""
+    return (os.environ.get("AGENT_LSP_ALLOW_LOCAL") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
 
 def _free_port() -> int:
@@ -112,6 +122,11 @@ class RuntimeHub:
         *,
         language_version: str = "",
     ) -> SessionRuntime:
+        if not allow_local_runtime():
+            raise RuntimeError(
+                "local LSP runtimes are disabled; set AGENT_LSP_ALLOW_LOCAL=1 "
+                "only for tests/dev (production uses Docker images)"
+            )
         existing = self.get(session_id)
         if (
             existing

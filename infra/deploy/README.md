@@ -15,3 +15,5 @@ curl -fsS -H "Authorization: Bearer $AGENT_LSP_BEARER_TOKEN" \
   -H 'Accept: application/json, text/event-stream' \
   https://lsp.runmcp.ru/mcp
 ```
+
+Production policy: **Docker-only** LSP runtimes. Local pyright/gopls is gated by `AGENT_LSP_ALLOW_LOCAL=1` (tests/dev).

@@ -68,6 +68,7 @@ def test_warm_error_when_no_seed(tmp_path: Path) -> None:
 
 
 def test_ensure_local_rejects_container_reuse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_LSP_ALLOW_LOCAL", "1")
     hub = RuntimeHub()
     stopped: list[str] = []
 

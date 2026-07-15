@@ -99,6 +99,8 @@ def test_await_missing_and_timeout(tmp_path: Path) -> None:
 def test_worker_import_and_warm_flow(data_dirs: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from agent_lsp import worker as worker_mod
 
+    monkeypatch.setenv("AGENT_LSP_ALLOW_LOCAL", "1")
+
     if worker_mod._worker is not None:
         worker_mod._worker.stop()
         worker_mod._worker = None
