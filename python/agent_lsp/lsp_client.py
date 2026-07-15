@@ -190,6 +190,8 @@ class LspClient:
     uri_root: Path | None = None
     # workspace/configuration + didChangeConfiguration payload (venv, extraPaths, …).
     settings: dict[str, Any] = field(default_factory=dict)
+    # LSP initialize.initializationOptions (e.g. tsserver.path for typescript).
+    initialization_options: dict[str, Any] = field(default_factory=dict)
     _next_id: int = 1
     _pending: dict[int, dict[str, Any] | None] = field(default_factory=dict)
     _reader: threading.Thread | None = None
@@ -209,6 +211,7 @@ class LspClient:
         *,
         uri_root: Path | None = None,
         settings: dict[str, Any] | None = None,
+        initialization_options: dict[str, Any] | None = None,
     ) -> LspClient:
         transport = TcpTransport(host, port)
         client = cls(
@@ -217,6 +220,7 @@ class LspClient:
             transport=transport,
             uri_root=uri_root,
             settings=dict(settings or {}),
+            initialization_options=dict(initialization_options or {}),
         )
         client._start_reader()
         client.initialize()
@@ -230,6 +234,7 @@ class LspClient:
         cmd: list[str],
         *,
         settings: dict[str, Any] | None = None,
+        initialization_options: dict[str, Any] | None = None,
     ) -> LspClient:
         resolved = resolve_lsp_command(cmd)
         # Discard stderr so a chatty language server cannot fill the PIPE and deadlock.
@@ -247,6 +252,7 @@ class LspClient:
             language_id=language_id,
             transport=transport,
             settings=dict(settings or {}),
+            initialization_options=dict(initialization_options or {}),
         )
         client._start_reader()
         client.initialize()
@@ -386,33 +392,36 @@ class LspClient:
         # host processId: pyright watches that PID and exits when it is absent
         # from the server's PID namespace. Local stdio keeps os.getpid().
         process_id = None if isinstance(self.transport, TcpTransport) else os.getpid()
+        params: dict[str, Any] = {
+            "processId": process_id,
+            "rootUri": root_uri,
+            "rootPath": str(lsp_root),
+            "capabilities": {
+                "workspace": {
+                    "workspaceFolders": True,
+                    "configuration": True,
+                },
+                "textDocument": {
+                    "synchronization": {"didOpen": True, "didClose": True},
+                    "hover": {"contentFormat": ["plaintext", "markdown"]},
+                    "documentSymbol": {"hierarchicalDocumentSymbolSupport": True},
+                    "references": {},
+                    "definition": {},
+                    "implementation": {},
+                    "callHierarchy": {},
+                    "publishDiagnostics": {},
+                },
+                "window": {"workDoneProgress": True},
+            },
+            "workspaceFolders": [
+                {"uri": root_uri, "name": lsp_root.name or self.root.name}
+            ],
+        }
+        if self.initialization_options:
+            params["initializationOptions"] = self.initialization_options
         result = self.request(
             "initialize",
-            {
-                "processId": process_id,
-                "rootUri": root_uri,
-                "rootPath": str(lsp_root),
-                "capabilities": {
-                    "workspace": {
-                        "workspaceFolders": True,
-                        "configuration": True,
-                    },
-                    "textDocument": {
-                        "synchronization": {"didOpen": True, "didClose": True},
-                        "hover": {"contentFormat": ["plaintext", "markdown"]},
-                        "documentSymbol": {"hierarchicalDocumentSymbolSupport": True},
-                        "references": {},
-                        "definition": {},
-                        "implementation": {},
-                        "callHierarchy": {},
-                        "publishDiagnostics": {},
-                    },
-                    "window": {"workDoneProgress": True},
-                },
-                "workspaceFolders": [
-                    {"uri": root_uri, "name": lsp_root.name or self.root.name}
-                ],
-            },
+            params,
             timeout=120.0,
         )
         self.notify("initialized", {})

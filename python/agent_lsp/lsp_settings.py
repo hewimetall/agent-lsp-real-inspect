@@ -49,7 +49,8 @@ def build_lsp_settings(
         return settings
     if lang == "typescript":
         return {
-            "typescript": {"tsserver": {"maxTsServerMemory": 4096}},
+            # Cap heap for small VPS hosts (3–4 GiB); 4096 OOMs initialize.
+            "typescript": {"tsserver": {"maxTsServerMemory": 768}},
             "javascript": {"suggest": {"enabled": True}},
         }
     if lang == "go":
@@ -68,6 +69,25 @@ def build_lsp_settings(
                     }
                 }
         return {"clangd": {}}
+    return {}
+
+
+# Global TypeScript from the LSP image (pinned typescript@5.x — has tsserver.js).
+_CONTAINER_TSSERVER = "/usr/local/lib/node_modules/typescript/lib/tsserver.js"
+
+
+def build_initialization_options(language: str) -> dict[str, Any]:
+    """LSP ``initialize.initializationOptions`` for the language server."""
+    lang = normalize_language(language)
+    if lang == "typescript":
+        # Prefer workspace typescript; fall back to the image-global install so
+        # repos without a local `typescript` dependency still initialize.
+        return {
+            "tsserver": {
+                "path": _CONTAINER_TSSERVER,
+                "fallbackPath": _CONTAINER_TSSERVER,
+            }
+        }
     return {}
 
 
