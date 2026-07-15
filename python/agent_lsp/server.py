@@ -24,6 +24,11 @@ from agent_lsp.worker import wake_worker
 mcp = FastMCP("agent-lsp")
 mcp.add_middleware(ClientCompatMiddleware())
 
+# Important scout prompts → MCP prompts/list (not an HTTP /prompt route).
+from agent_lsp.prompts import register_prompts  # noqa: E402
+
+register_prompts(mcp)
+
 _state: Any = None
 _git: Any = None
 _docker: Any = None
