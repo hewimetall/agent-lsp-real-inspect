@@ -62,4 +62,6 @@ pub trait ContainerRuntime: Send + Sync {
     ) -> Result<PersistentContainer, ContainerError>;
     fn stop(&self, container_id: &str) -> Result<(), ContainerError>;
     fn remove(&self, container_id: &str) -> Result<(), ContainerError>;
+    /// True iff Docker reports the container as currently running.
+    fn is_running(&self, container_id: &str) -> Result<bool, ContainerError>;
 }

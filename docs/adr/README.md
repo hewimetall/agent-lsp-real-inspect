@@ -18,6 +18,7 @@ Context / Decision / Consequences. Этот каталог = **ADL** (журна
 | [0009](0009-lsp-cache-volumes-and-warm-index.md) | D6 | Accepted | Cache volumes + warm_index readiness per LSP |
 | [0010](0010-workspace-deps-and-runtime-versions.md) | D7 | Accepted | Language versions + deps/apt install for LSP resolution |
 | [0011](0011-local-git-mirrors.md) | D8 | Accepted | Local git mirrors: TOML catalog + manual sync → `mirror:<id>` |
+| [0012](0012-runtime-health-worker.md) | D4.1 | Accepted | Separate Rust worker: dead containers → `stale` |
 
 ## Как добавить ADR
 

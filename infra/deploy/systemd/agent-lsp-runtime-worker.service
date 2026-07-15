@@ -1,0 +1,19 @@
+[Unit]
+Description=agent-lsp runtime health worker (Docker ↔ sessions.db)
+After=network-online.target docker.service agent-lsp.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/agent-lsp
+EnvironmentFile=-/etc/agent-lsp/agent-lsp.env
+Environment=AGENT_LSP_RUNTIME_WORKER_INTERVAL_SECS=15
+Environment=RUST_LOG=info
+ExecStart=/opt/agent-lsp/target/release/agent-lsp-runtime-worker
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

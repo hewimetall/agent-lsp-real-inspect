@@ -64,6 +64,29 @@ impl ContainerRuntime for BollardDockerAdapter {
                 .map_err(|e| ContainerError::msg(format!("remove: {e}")))
         })
     }
+
+    fn is_running(&self, container_id: &str) -> Result<bool, ContainerError> {
+        self.rt.block_on(async move {
+            let docker = Docker::connect_with_local_defaults()
+                .map_err(|e| ContainerError::msg(format!("connect docker: {e}")))?;
+            match docker.inspect_container(container_id, None).await {
+                Ok(inspect) => Ok(inspect
+                    .state
+                    .as_ref()
+                    .and_then(|s| s.running)
+                    .unwrap_or(false)),
+                Err(e) => {
+                    let msg = e.to_string();
+                    // Missing container → not running (reconciler / stale bind).
+                    if msg.contains("No such container") || msg.contains("404") {
+                        Ok(false)
+                    } else {
+                        Err(ContainerError::msg(format!("inspect: {msg}")))
+                    }
+                }
+            }
+        })
+    }
 }
 
 pub(crate) fn apply_wait_result(

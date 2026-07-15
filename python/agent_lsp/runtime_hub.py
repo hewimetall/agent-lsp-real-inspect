@@ -7,6 +7,7 @@ import socket
 import subprocess
 import threading
 import time
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -226,7 +227,10 @@ class RuntimeHub:
             and (existing.language_version or "") == (language_version or "")
             and (existing.image or "") == image
         ):
-            return existing
+            # Ready in memory ≠ Docker alive (OOM / manual stop / daemon restart).
+            if self._container_still_running(existing, docker):
+                return existing
+            self._mark_dead_container(existing, reason="docker reports container not running")
 
         # Start the replacement first (unique name). Only tear down the previous
         # runtime after the new LSP is reachable — never leave the session cold.
@@ -302,8 +306,34 @@ class RuntimeHub:
             return
         uri_root = rt.client.uri_root
         settings = build_lsp_settings(rt.workspace_path, rt.language, uri_root=uri_root)
-        try:
+        with suppress(Exception):
             rt.client.apply_settings(settings)
+
+    @staticmethod
+    def _container_still_running(rt: SessionRuntime, docker: Any) -> bool:
+        if not rt.container_id or not hasattr(docker, "is_running"):
+            return True
+        try:
+            return bool(docker.is_running(rt.container_id))
+        except Exception:
+            # Fail open on inspect errors — worker + next ensure will reconcile.
+            return True
+
+    def _mark_dead_container(self, rt: SessionRuntime, *, reason: str) -> None:
+        rt.needs_recycle = True
+        rt.index_status = "stale"
+        rt.error = reason
+        with self._lock:
+            self.sessions[rt.session_id] = rt
+        try:
+            from agent_lsp.server import get_state
+
+            state = get_state()
+            if rt.container_id:
+                with suppress(Exception):
+                    state.mark_container_stopped(rt.container_id)
+            with suppress(Exception):
+                state.set_index_status(rt.session_id, "stale")
         except Exception:
             pass
 
@@ -313,7 +343,9 @@ class RuntimeHub:
             raise RuntimeError(f"no runtime for session {session_id}")
         if rt.needs_recycle:
             rt.index_status = "error"
-            rt.error = "runtime needs recycle after deps install — call ensure_runtime"
+            rt.error = rt.error or (
+                "runtime needs recycle after deps install — call ensure_runtime"
+            )
             with self._lock:
                 self.sessions[session_id] = rt
             return rt
@@ -331,7 +363,7 @@ class RuntimeHub:
                 if syms:
                     rt.client.references(syms[0].file, syms[0].line, syms[0].character)
                 probed = True
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 rt.error = str(exc)
         if ready or probed:
             rt.index_status = "ready"
@@ -352,25 +384,19 @@ class RuntimeHub:
 
     def _teardown(self, rt: SessionRuntime, docker: Any | None) -> None:
         if rt.client is not None:
-            try:
+            with suppress(Exception):
                 rt.client.shutdown()
-            except Exception:
-                pass
         if rt.local_proc is not None:
             try:
                 rt.local_proc.terminate()
                 rt.local_proc.wait(timeout=5)
             except Exception:
-                try:
+                with suppress(Exception):
                     rt.local_proc.kill()
-                except Exception:
-                    pass
         if rt.runtime_mode == "container" and rt.container_id and docker is not None:
-            try:
+            with suppress(Exception):
                 docker.stop(rt.container_id)
                 docker.remove(rt.container_id)
-            except Exception:
-                pass
 
 
 def _find_seed_file(root: Path, language: str) -> Path | None:

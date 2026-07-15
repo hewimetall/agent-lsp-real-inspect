@@ -25,6 +25,7 @@ CRATES=(
   "$ROOT/packages/agent-lsp-state|agent-lsp-state"
   "$ROOT/packages/agent-lsp-git|agent-lsp-git"
   "$ROOT/packages/agent-lsp-docker|agent-lsp-docker"
+  "$ROOT/packages/agent-lsp-runtime-worker|agent-lsp-runtime-worker"
 )
 
 if ! command -v cargo-llvm-cov >/dev/null 2>&1; then

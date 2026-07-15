@@ -114,6 +114,31 @@ def _client_for(session_id: str) -> Any | dict[str, Any]:
             "session_id": session_id,
             "hint": "call ensure_runtime then warm_index",
         }
+    if (
+        rt.runtime_mode == "container"
+        and rt.container_id
+        and not rt.needs_recycle
+    ):
+        docker = get_docker()
+        if docker is not None and hasattr(docker, "is_running"):
+            try:
+                if not docker.is_running(rt.container_id):
+                    HUB._mark_dead_container(
+                        rt, reason="docker reports container not running"
+                    )
+                    return {
+                        "error": "runtime_stale",
+                        "session_id": session_id,
+                        "hint": "container died — call ensure_runtime then warm_index",
+                    }
+            except Exception:
+                pass
+    if rt.needs_recycle:
+        return {
+            "error": "runtime_stale",
+            "session_id": session_id,
+            "hint": "runtime needs recycle — call ensure_runtime then warm_index",
+        }
     return rt.client
 
 

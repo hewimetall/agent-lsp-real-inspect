@@ -100,6 +100,13 @@ impl DockerService {
             .remove(container_id)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
+
+    /// True if Docker Engine reports the container as running.
+    fn is_running(&self, container_id: &str) -> PyResult<bool> {
+        self.inner
+            .is_running(container_id)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
 }
 
 #[pymodule]
