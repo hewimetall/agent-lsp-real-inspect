@@ -266,11 +266,12 @@ async def main() -> int:
         "tools_count": None,
     }
 
+    # Probe tools/prompts on a short-lived session, then one Client per target
+    # so a proxy 502 / disconnect does not abort the rest of the suite.
     async with Client(URL, auth=TOKEN) as client:
         tools = await client.list_tools()
         report["tools_count"] = len(tools)
         print(f"tools: {len(tools)}", flush=True)
-
         try:
             prompts = await client.list_prompts()
             names = sorted(getattr(p, "name", str(p)) for p in prompts)
@@ -280,29 +281,30 @@ async def main() -> int:
             report["prompts_error"] = str(exc)
             print(f"prompts: error {exc}", flush=True)
 
-        selected = [
-            t
-            for t in TARGETS
-            if not ONLY
-            or t.language in ONLY
-            or t.name in ONLY
-            or t.project_id in ONLY
-        ]
-        for t in selected:
-            try:
+    selected = [
+        t
+        for t in TARGETS
+        if not ONLY
+        or t.language in ONLY
+        or t.name in ONLY
+        or t.project_id in ONLY
+    ]
+    for t in selected:
+        try:
+            async with Client(URL, auth=TOKEN) as client:
                 entry = await run_target(client, t)
-            except Exception as exc:  # noqa: BLE001
-                entry = {
-                    "name": t.name,
-                    "language": t.language,
-                    "ok": False,
-                    "failed_at": "exception",
-                    "error": str(exc),
-                }
-                print(f"    FAIL exception: {exc}", flush=True)
-            report["targets"].append(entry)
-            if not entry.get("ok"):
-                report["ok"] = False
+        except Exception as exc:  # noqa: BLE001
+            entry = {
+                "name": t.name,
+                "language": t.language,
+                "ok": False,
+                "failed_at": "exception",
+                "error": str(exc),
+            }
+            print(f"    FAIL exception: {exc}", flush=True)
+        report["targets"].append(entry)
+        if not entry.get("ok"):
+            report["ok"] = False
 
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(json.dumps(report, indent=2, default=str) + "\n")
