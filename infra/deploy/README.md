@@ -3,10 +3,10 @@
 Caddy (auto HTTPS) → bearer check → FastMCP HTTP on `127.0.0.1:8765` (`/mcp`).
 
 ```bash
-# on server (default ref: v0.1.4)
+# on server (default ref: v0.1.5)
 sudo bash infra/deploy/scripts/bootstrap.sh
 # or pin explicitly:
-# REPO_REF=v0.1.4 sudo bash infra/deploy/scripts/bootstrap.sh
+# REPO_REF=v0.1.5 sudo bash infra/deploy/scripts/bootstrap.sh
 ```
 
 Upgrade an existing install:
@@ -14,7 +14,7 @@ Upgrade an existing install:
 ```bash
 cd /opt/agent-lsp
 git fetch --tags origin
-git checkout v0.1.4
+git checkout v0.1.5
 uv sync --extra dev && uv run make develop
 cargo build --release --manifest-path packages/agent-lsp-runtime-worker/Cargo.toml
 install -m 0755 packages/agent-lsp-runtime-worker/target/release/agent-lsp-runtime-worker \
