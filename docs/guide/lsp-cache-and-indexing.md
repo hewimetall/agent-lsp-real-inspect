@@ -1,6 +1,7 @@
 # LSP cache & indexing — go / python / typescript / rust
 
-Research note for **agent-lsp** runtimes (`agent_lsp.runtimes.RUNTIMES`).
+Research note for **agent-lsp** runtimes (`agent_lsp.runtimes.RUNTIMES`:
+go / python / typescript / rust / **cpp**).
 Sources: Context7 (`/websites/go_dev_gopls`, `/golang/tools`, `/websites/rust-analyzer_github_io_book`, `/microsoft/pyright`, `/microsoft/typescript`, `/typescript-language-server/typescript-language-server`), Tavily search/extract, Searchcode on upstream repos, and local `warm_index` implementation.
 
 **Scope:** how each language server builds an “index”, what lives in memory vs on disk, how invalidation works, and what that means for session-held containers + `warm_index`.

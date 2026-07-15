@@ -54,6 +54,20 @@ def build_lsp_settings(
         }
     if lang == "go":
         return {"gopls": {"directoryFilters": ["-**/node_modules"]}}
+    if lang == "cpp":
+        # clangd finds compile_commands.json by walking parents of opened files.
+        # Prefer an explicit compilation database when present in the worktree.
+        for name in ("compile_commands.json", "build/compile_commands.json"):
+            db = workspace / name
+            if db.is_file():
+                return {
+                    "clangd": {
+                        "compilationDatabasePath": container_path(
+                            workspace, db.parent, uri_root
+                        )
+                    }
+                }
+        return {"clangd": {}}
     return {}
 
 

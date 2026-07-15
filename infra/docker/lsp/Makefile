@@ -2,7 +2,7 @@
 REGISTRY ?= ghcr.io/hewimetall
 TAG ?= latest
 
-LANGUAGES := go python typescript rust
+LANGUAGES := go python typescript rust cpp
 
 # Version matrices for ADR-0010 language_version tags.
 PYTHON_VERSIONS ?= 3.11 3.12 3.13 3.14
@@ -24,6 +24,9 @@ typescript:
 
 rust:
 	docker build -f rust/Dockerfile -t $(REGISTRY)/agent-lsp-rust:$(TAG) .
+
+cpp:
+	docker build -f cpp/Dockerfile -t $(REGISTRY)/agent-lsp-cpp:$(TAG) .
 
 # Build versioned tags used by ensure_runtime(language_version=…).
 versions: python-versions go-versions node-versions

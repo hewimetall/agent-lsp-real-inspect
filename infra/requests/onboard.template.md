@@ -4,7 +4,7 @@
 project_id: <id>
 source: <git-url | local-path | mirror:<id>>
 ref_name: <HEAD | branch>
-language: <python|go|typescript|rust>
+language: <python|go|typescript|rust|cpp>
 language_version: <e.g. 3.12>
 packages: <optional pip/npm/go pkgs>
 apt_packages: <optional>

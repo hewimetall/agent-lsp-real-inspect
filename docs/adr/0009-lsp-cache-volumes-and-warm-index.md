@@ -21,7 +21,8 @@ project load finishes.
 
 ## Decision
 
-1. **Session-held process is the primary warm cache** for all four languages.
+1. **Session-held process is the primary warm cache** for all registered languages
+   (go / python / typescript / rust / cpp).
    Do not restart the LSP between scout calls in one session.
 
 2. **Language-specific durable volumes** (when using containers) SHOULD be

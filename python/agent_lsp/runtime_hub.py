@@ -365,6 +365,7 @@ def _find_seed_file(root: Path, language: str) -> Path | None:
         "python": ["**/*.py"],
         "typescript": ["**/*.{ts,tsx}"],
         "rust": ["**/*.rs"],
+        "cpp": ["**/*.{cpp,cc,cxx,c,hpp,hh,hxx,h}"],
     }
     skip = {"node_modules", "target", ".venv", env_layout.AGENT_LSP_DIR, "vendor"}
     for pattern in patterns.get(normalize_language(language), ["**/*"]):

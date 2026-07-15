@@ -46,6 +46,11 @@ def test_env_layout_cache_helpers(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 def test_runtimes_normalize_and_fallback_versions() -> None:
     assert normalize_language("JS") == "typescript"
     assert normalize_language("ts") == "typescript"
+    assert normalize_language("c++") == "cpp"
+    assert normalize_language("c") == "cpp"
+    assert normalize_language("clangd") == "cpp"
+    assert resolve_image("cpp").endswith("agent-lsp-cpp:latest")
+    assert resolve_install_image("cpp") == "debian:bookworm"
     assert resolve_image("python", "v3.12").endswith(":3.12")
     assert resolve_image("python", "9.9.9").endswith(":9.9")
     assert resolve_image("go", "1.24").endswith(":1.24")
@@ -193,3 +198,11 @@ def test_worker_install_and_apt_with_fake_docker(
     assert server.enqueue_install_apt_packages(sid, [])["error"] == "packages_required"
     bad = server.enqueue_install_workspace_deps("missing-session", language="python")
     assert "error" in bad or bad.get("status") == "queued"
+
+
+def test_cpp_settings_picks_compile_commands(tmp_path: Path) -> None:
+    build = tmp_path / "build"
+    build.mkdir()
+    (build / "compile_commands.json").write_text("[]\n", encoding="utf-8")
+    settings = build_lsp_settings(tmp_path, "cpp", uri_root=Path("/workspace"))
+    assert settings["clangd"]["compilationDatabasePath"] == "/workspace/build"
