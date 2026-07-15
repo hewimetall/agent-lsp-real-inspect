@@ -3,10 +3,10 @@
 Caddy (auto HTTPS) → bearer check → FastMCP HTTP on `127.0.0.1:8765` (`/mcp`).
 
 ```bash
-# on server (default ref: v0.1.3)
+# on server (default ref: v0.1.4)
 sudo bash infra/deploy/scripts/bootstrap.sh
 # or pin explicitly:
-# REPO_REF=v0.1.3 sudo bash infra/deploy/scripts/bootstrap.sh
+# REPO_REF=v0.1.4 sudo bash infra/deploy/scripts/bootstrap.sh
 ```
 
 Upgrade an existing install:
@@ -14,7 +14,7 @@ Upgrade an existing install:
 ```bash
 cd /opt/agent-lsp
 git fetch --tags origin
-git checkout v0.1.3
+git checkout v0.1.4
 uv sync --extra dev && uv run make develop
 systemctl daemon-reload && systemctl restart agent-lsp
 ```
