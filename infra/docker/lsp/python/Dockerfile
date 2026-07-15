@@ -2,10 +2,10 @@
 # Multi-tag: build with --build-arg PYTHON_VERSION=3.11 and tag :3.11
 # Image: ghcr.io/hewimetall/agent-lsp-python:latest|3.11|3.12|3.13|3.14
 ARG PYTHON_VERSION=3.12
-FROM python:${PYTHON_VERSION}-bookworm-slim
+FROM python:${PYTHON_VERSION}-slim-bookworm
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates libatomic1 \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir pyright \
     && command -v pyright-langserver \
