@@ -77,6 +77,7 @@ def test_runtime_hub_put_get_drop_warm(tmp_path: Path) -> None:
 
 
 def test_runtime_hub_ensure_local_stdio(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_LSP_ALLOW_LOCAL", "1")
     hub = RuntimeHub()
 
     class DummyClient:

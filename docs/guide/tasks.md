@@ -57,6 +57,19 @@ select the progress-first path.
 
 Durable queue is SQLite `state/tasks.db` (not Docket). See ADR-0001…0004, ADR-0010.
 
-Chat request templates (important skills only, **not** MCP `/prompts`):
-[`infra/requests/README.md`](../../infra/requests/README.md).
+## MCP prompts (`prompts/list`)
 
+Registered via FastMCP `@mcp.prompt` in `python/agent_lsp/prompts.py` (not an HTTP
+`/prompt` route). Important only:
+
+| Name | Purpose |
+|------|---------|
+| `onboard` | import → checkout → runtime → warm |
+| `mirror` | host mirror-sync then `source=mirror:<id>` |
+| `explore` | `explore_symbol` (+ optional blast) |
+| `impact` | `blast_radius` before edits |
+| `safe_edit` | blast-gate then edit worktree |
+| `verify` | re-warm / re-blast after edits |
+
+Clients: `prompts/list` / `prompts/get`. Skills under `/skills` and field layouts under
+[`infra/requests/`](../../infra/requests/README.md) describe the same flows.

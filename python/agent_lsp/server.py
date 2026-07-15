@@ -24,6 +24,11 @@ from agent_lsp.worker import wake_worker
 mcp = FastMCP("agent-lsp")
 mcp.add_middleware(ClientCompatMiddleware())
 
+# Important scout prompts → MCP prompts/list (not an HTTP /prompt route).
+from agent_lsp.prompts import register_prompts  # noqa: E402
+
+register_prompts(mcp)
+
 _state: Any = None
 _git: Any = None
 _docker: Any = None
@@ -379,11 +384,12 @@ async def ensure_runtime(
     ctx: Context | None = None,
     progress: Progress = Progress(),
 ) -> dict[str, Any]:
-    """Start LSP runtime held by the session.
+    """Start LSP runtime held by the session (**Docker container**).
 
     ``language_version`` pins the interpreter/toolchain (e.g. python ``3.11``,
     go ``1.23``, node ``22``). ``image`` overrides the resolved LSP image tag.
-    Cursor: sync call + progress; task-capable clients may pass task=True.
+    Local host LSPs are disabled unless ``AGENT_LSP_ALLOW_LOCAL=1`` and
+    ``prefer_container=false`` (tests/dev only).
     """
     queued = enqueue_ensure_runtime(
         session_id,

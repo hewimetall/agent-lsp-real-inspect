@@ -30,7 +30,9 @@ blast_radius / find_references / explore_symbol
 
 ## Adding more deps later
 
-Call `install_workspace_deps` again with more `packages`. By default the session LSP is restarted so site-packages / node_modules are reloaded; then `warm_index` again.
+Call `install_workspace_deps` again with more `packages`. By default the session LSP is
+**force-recycled** (`ensure_container(..., force=True)`) so site-packages / node_modules
+are reloaded without leaving the session cold; then `warm_index` again.
 
 ## Version pins
 

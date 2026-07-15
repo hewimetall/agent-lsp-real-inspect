@@ -3,10 +3,11 @@
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/hewimetall/agent-lsp-real-inspect.git}"
-REPO_REF="${REPO_REF:-cursor/workspace-deps-runtime-versions-b773}"
+REPO_REF="${REPO_REF:-v0.1.0}"
 INSTALL_ROOT="${INSTALL_ROOT:-/opt/agent-lsp}"
 DATA_ROOT="${DATA_ROOT:-/var/lib/agent-lsp}"
 DOMAIN="${DOMAIN:-lsp.runmcp.ru}"
+BUILD_LSP_IMAGES="${BUILD_LSP_IMAGES:-1}"
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -49,6 +50,14 @@ uv sync --extra dev
 # Prefer uv-run maturin so PATH need not include .venv yet
 uv run make develop || make develop
 
+if [[ "$BUILD_LSP_IMAGES" == "1" ]]; then
+  echo "==> build LSP Docker images (all languages + python 3.12 tag)"
+  make -C infra/docker/lsp all
+  make -C infra/docker/lsp python-versions PYTHON_VERSIONS="3.12"
+  # Base image for install_workspace_deps / apt bootstrap — fail closed
+  docker pull python:3.12-bookworm
+fi
+
 mkdir -p "$DATA_ROOT"/{state,projects,workspaces,cache,mirrors} /etc/agent-lsp
 
 if [[ ! -f /etc/agent-lsp/bearer.env ]]; then
@@ -69,6 +78,8 @@ AGENT_LSP_WORKSPACES=${DATA_ROOT}/workspaces
 AGENT_LSP_CACHE=${DATA_ROOT}/cache
 AGENT_LSP_MIRRORS=${DATA_ROOT}/mirrors
 AGENT_LSP_MIRRORS_TOML=${INSTALL_ROOT}/infra/mirrors/mirrors.toml
+# Production: Docker-only LSP / deps (never enable AGENT_LSP_ALLOW_LOCAL here)
+AGENT_LSP_ALLOW_LOCAL=0
 FASTMCP_TRANSPORT=http
 FASTMCP_HOST=127.0.0.1
 FASTMCP_PORT=8765
