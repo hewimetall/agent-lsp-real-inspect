@@ -28,3 +28,5 @@ scout workspaces.
   (mirrors are an operational optimization, not an egress policy).
 - `paths.mirrors_dir()` and `mirrors.mirrors_root()` share one resolution rule;
   `mirror-sync.py` prefers the catalog next to the script’s repo checkout.
+- Onboard fields live in `infra/mirrors/REQUEST.template.md` / skill `lsp-mirror`
+  as ordinary chat text — **not** exposed via MCP `/prompts`.

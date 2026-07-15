@@ -6,7 +6,8 @@ Prefer MCP scout tools over grep/read for code intelligence.
 **Before editing:** `blast_radius` on touched files.
 **Before analysis:** `warm_index` completed for the session.
 **Onboard:** `/lsp-onboard` → import → checkout → ensure_runtime → warm_index.
-**Mirrors:** `/lsp-mirror` → fill chat prompt → manual `mirror-sync.py` → `source="mirror:<id>"`.
+**Mirrors:** skill `lsp-mirror` + `infra/mirrors/REQUEST.template.md` (plain chat
+fields, **not** MCP `/prompts`) → manual `mirror-sync.py` → `source="mirror:<id>"`.
 
 | Task | Tool |
 |------|------|

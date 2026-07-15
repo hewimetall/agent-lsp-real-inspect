@@ -3,40 +3,13 @@ name: lsp-mirror
 description: Sync local git mirrors by hand, then onboard a workspace from mirror:<id>.
 ---
 
-# /lsp-mirror
+# lsp-mirror
 
 Heavy trees live in [`infra/mirrors/mirrors.toml`](../../infra/mirrors/mirrors.toml).
 **MCP never pulls them** — sync on the host, then `import_project(source="mirror:<id>")`.
 
-## Chat prompt (copy / fill)
-
-Paste into chat and fill the blanks:
-
-```text
-/lsp-mirror
-
-mirror_ids: <ceph, minio, …>          # from mirrors.toml; comma-separated
-sync_now: <yes|no>                    # yes → run mirror-sync.py on the host first
-language: <python|go|typescript|rust>
-language_version: <e.g. 3.12|1.23|22>
-ensure_runtime: <yes|no>              # default yes
-warm_index: <yes|no>                  # default yes
-notes: <optional>
-```
-
-Example:
-
-```text
-/lsp-mirror
-
-mirror_ids: ceph
-sync_now: yes
-language: python
-language_version: 3.12
-ensure_runtime: yes
-warm_index: yes
-notes: explore src/pybind/mgr
-```
+User fields (ordinary chat message — **not** MCP `/prompts`): see
+[`infra/mirrors/REQUEST.template.md`](../../infra/mirrors/REQUEST.template.md).
 
 ## Agent checklist
 

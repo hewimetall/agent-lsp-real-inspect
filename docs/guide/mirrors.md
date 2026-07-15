@@ -50,23 +50,14 @@ gix (`import_local` from the bare path) — no network at MCP time.
 
 Symlink escapes out of `AGENT_LSP_MIRRORS` are rejected after `resolve()`.
 
-## Chat prompt template
+## Chat request fields (not MCP /prompts)
 
-Copy into chat and fill:
+Fill an ordinary chat message — template file:
+[`infra/mirrors/REQUEST.template.md`](../../infra/mirrors/REQUEST.template.md).
 
-```text
-/lsp-mirror
+Do **not** register or serve this via FastMCP `@mcp.prompt` / Cursor Prompt UI.
 
-mirror_ids: <ceph, minio, …>
-sync_now: <yes|no>
-language: <python|go|typescript|rust>
-language_version: <e.g. 3.12>
-ensure_runtime: <yes|no>
-warm_index: <yes|no>
-notes: <optional>
-```
-
-Skill: [`skills/lsp-mirror/SKILL.md`](../../skills/lsp-mirror/SKILL.md).
+Agent steps: [`skills/lsp-mirror/SKILL.md`](../../skills/lsp-mirror/SKILL.md).
 
 ## Onboard from mirror
 
