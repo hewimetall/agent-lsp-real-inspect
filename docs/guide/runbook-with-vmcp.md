@@ -15,7 +15,7 @@ MCP client ──HTTP/stdio──► vmcp (:8765/mcp)
                          agent-lsp (stdio child)
                               │  prefer_container?
                               ▼
-                    LSP containers :3737  /  local LSP
+                    LSP containers :3737  (Docker-only; local needs AGENT_LSP_ALLOW_LOCAL=1)
 ```
 
 ## 0. Prerequisites
@@ -189,7 +189,7 @@ vmcp gateway. Use it to prove scout works; use §4–5 to prove gateway wiring.
 |---------|-----|
 | Upstream spawn timeout | Raise `VMCP_UPSTREAM__SPAWN_TIMEOUT_MS`; ensure `uv run agent-lsp` works alone |
 | Tools missing task support | Copy sidecar; enable `[tasks]`; restart vmcp |
-| Docker LSP fails under nested env | `vfs` storage; or `prefer_container=false` |
+| Docker LSP fails under nested env | `vfs` storage; load pre-built images; do not enable host local in prod |
 | Auth / OAuth loops locally | `VMCP_AUTH__ENABLED=false` for lab only |
 
 ## See also

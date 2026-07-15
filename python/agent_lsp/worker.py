@@ -147,7 +147,7 @@ class ScoutWorker:
 
     def _ensure_runtime(self, tid: str, task: dict[str, Any]) -> None:
         from agent_lsp import server
-        from agent_lsp.runtime_hub import HUB
+        from agent_lsp.runtime_hub import HUB, allow_local_runtime
         from agent_lsp.runtimes import resolve_image
 
         payload = self._payload(task)
@@ -167,7 +167,32 @@ class ScoutWorker:
         workspace = Path(ws["path"])
         docker = server.get_docker()
         resolved = resolve_image(language, language_version, image)
-        if prefer_container and docker is not None:
+        # Production path is Docker-only. Local LSP requires AGENT_LSP_ALLOW_LOCAL=1
+        # and an explicit prefer_container=false (tests/dev).
+        use_local = (not prefer_container) and allow_local_runtime()
+        if use_local:
+            try:
+                rt = HUB.ensure_local(
+                    session_id,
+                    workspace,
+                    language,
+                    docker=docker,
+                    language_version=language_version,
+                )
+            except Exception as exc:
+                self._tasks.update(tid, status="error", error=str(exc))
+                return
+        else:
+            if docker is None:
+                self._tasks.update(
+                    tid,
+                    status="error",
+                    error=(
+                        "Docker unavailable — LSP runtimes require containers "
+                        "(fix get_docker / docker.sock). Local fallback is disabled."
+                    ),
+                )
+                return
             try:
                 rt = HUB.ensure_container(
                     session_id,
@@ -177,23 +202,13 @@ class ScoutWorker:
                     image_override=resolved,
                     language_version=language_version,
                 )
-            except Exception as exc:  # noqa: BLE001
-                rt = HUB.ensure_local(
-                    session_id,
-                    workspace,
-                    language,
-                    docker=docker,
-                    language_version=language_version,
+            except Exception as exc:
+                self._tasks.update(
+                    tid,
+                    status="error",
+                    error=f"container runtime failed (no local fallback): {exc}",
                 )
-                self._tasks.update(tid, logs=f"container fallback: {exc}")
-        else:
-            rt = HUB.ensure_local(
-                session_id,
-                workspace,
-                language,
-                docker=docker,
-                language_version=language_version,
-            )
+                return
         server.get_state().bind_container(
             session_id,
             rt.container_id or "unknown",
@@ -228,36 +243,49 @@ class ScoutWorker:
 
         docker = server.get_docker()
         cmd = ["bash", "-lc", script]
-        if docker is not None:
-            result = docker.run(
-                image,
+        if docker is None:
+            from agent_lsp.runtime_hub import allow_local_runtime
+
+            if not allow_local_runtime():
+                return {
+                    "mode": "error",
+                    "image": image,
+                    "status_code": 1,
+                    "logs": (
+                        "Docker unavailable — install/deps scripts require containers "
+                        "(AGENT_LSP_ALLOW_LOCAL=1 to run on host for tests)"
+                    ),
+                    "container_id": None,
+                }
+            completed = subprocess.run(
                 cmd,
-                binds=binds or [f"{workspace.resolve()}:/workspace:rw"],
-                workdir="/workspace",
-                env=env or [],
-                auto_remove=True,
+                cwd=str(workspace),
+                capture_output=True,
+                text=True,
+                check=False,
             )
+            logs = (completed.stdout or "") + (completed.stderr or "")
             return {
-                "mode": "container",
-                "image": image,
-                "status_code": result.get("status_code"),
-                "logs": (result.get("logs") or "")[-8000:],
-                "container_id": result.get("container_id"),
+                "mode": "local",
+                "image": None,
+                "status_code": completed.returncode,
+                "logs": logs[-8000:],
+                "container_id": None,
             }
-        completed = subprocess.run(
+        result = docker.run(
+            image,
             cmd,
-            cwd=str(workspace),
-            capture_output=True,
-            text=True,
-            check=False,
+            binds=binds or [f"{workspace.resolve()}:/workspace:rw"],
+            workdir="/workspace",
+            env=env or [],
+            auto_remove=True,
         )
-        logs = (completed.stdout or "") + (completed.stderr or "")
         return {
-            "mode": "local",
-            "image": None,
-            "status_code": completed.returncode,
-            "logs": logs[-8000:],
-            "container_id": None,
+            "mode": "container",
+            "image": image,
+            "status_code": result.get("status_code"),
+            "logs": (result.get("logs") or "")[-8000:],
+            "container_id": result.get("container_id"),
         }
 
     def _install_workspace_deps(self, tid: str, task: dict[str, Any]) -> None:
@@ -368,13 +396,24 @@ class ScoutWorker:
             return
 
         if restart_runtime and rt is not None:
+            from agent_lsp.runtime_hub import allow_local_runtime
+
             docker = server.get_docker()
-            prefer_container = rt.runtime_mode == "container"
+            was_container = rt.runtime_mode == "container"
             lang = rt.language
             ver = rt.language_version
             image = rt.image
-            HUB.shutdown(session_id, docker=docker)
-            if prefer_container and docker is not None:
+            # force=True: recycle even when language/image match so new deps load.
+            # ensure_* starts the replacement first; put() tears down the old runtime.
+            if was_container or not allow_local_runtime():
+                if docker is None:
+                    self._tasks.update(
+                        tid,
+                        status="error",
+                        artifact=json.dumps(artifact),
+                        error="Docker unavailable for runtime restart (no local fallback)",
+                    )
+                    return
                 try:
                     HUB.ensure_container(
                         session_id,
@@ -383,15 +422,35 @@ class ScoutWorker:
                         docker,
                         image_override=image,
                         language_version=ver,
+                        force=True,
                     )
-                except Exception as exc:  # noqa: BLE001
-                    HUB.ensure_local(
-                        session_id, workspace, lang, docker=docker, language_version=ver
+                except Exception as exc:
+                    # Keep previous container, but mark stale so the next ensure_*
+                    # recycles instead of reusing an LSP that missed the new deps.
+                    stale = HUB.get(session_id)
+                    if stale is not None:
+                        stale.needs_recycle = True
+                        stale.index_status = "cold"
+                        stale.error = f"recycle after deps failed: {exc}"
+                    try:
+                        server.get_state().set_index_status(session_id, "cold")
+                    except Exception:
+                        pass
+                    self._tasks.update(
+                        tid,
+                        status="error",
+                        artifact=json.dumps(artifact),
+                        error=f"container restart failed (previous runtime kept, needs_recycle): {exc}",
                     )
-                    artifact["restart_fallback"] = str(exc)
+                    return
             else:
                 HUB.ensure_local(
-                    session_id, workspace, lang, docker=docker, language_version=ver
+                    session_id,
+                    workspace,
+                    lang,
+                    docker=docker,
+                    language_version=ver,
+                    force=True,
                 )
             artifact["restarted_runtime"] = True
             server.get_state().set_index_status(session_id, "cold")

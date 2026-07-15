@@ -8,6 +8,7 @@ Type=simple
 User=root
 WorkingDirectory=/opt/agent-lsp
 EnvironmentFile=-/etc/agent-lsp/agent-lsp.env
+Environment=AGENT_LSP_ALLOW_LOCAL=0
 Environment=FASTMCP_TRANSPORT=http
 Environment=FASTMCP_HOST=127.0.0.1
 Environment=FASTMCP_PORT=8765
