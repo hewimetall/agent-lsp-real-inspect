@@ -92,6 +92,7 @@ def test_runtime_hub_ensure_local_stdio(tmp_path: Path, monkeypatch: pytest.Monk
             cmd: list[str],
             *,
             settings: dict[str, Any] | None = None,
+            initialization_options: dict[str, Any] | None = None,
         ) -> DummyClient:
             return cls()
 

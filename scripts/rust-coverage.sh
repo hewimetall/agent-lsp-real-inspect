@@ -46,15 +46,20 @@ for entry in "${CRATES[@]}"; do
   name="${entry##*|}"
   echo "==> rust coverage: $name"
   lcov_out="$tmpdir/$name.lcov"
+  # Binary crates: measure the library only (main.rs is thin glue + Docker I/O).
+  extra_args=()
+  if [[ "$name" == "agent-lsp-runtime-worker" ]]; then
+    extra_args=(--lib)
+  fi
   if ! (
     cd "$crate"
-    cargo llvm-cov --no-default-features --lcov --output-path "$lcov_out"
+    cargo llvm-cov --no-default-features "${extra_args[@]}" --lcov --output-path "$lcov_out"
   ); then
     echo "FAIL: cargo llvm-cov failed for $name" >&2
     status=1
     continue
   fi
-  (cd "$crate" && cargo llvm-cov report --summary-only) || true
+  (cd "$crate" && cargo llvm-cov report --summary-only "${extra_args[@]}") || true
   python3 - "$lcov_out" "$name" "$pct_file" <<'PY'
 import sys
 from pathlib import Path
