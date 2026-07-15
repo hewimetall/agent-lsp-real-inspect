@@ -13,7 +13,7 @@ from typing import Any
 
 from agent_lsp import env_layout
 from agent_lsp.lsp_client import LspClient, resolve_lsp_command
-from agent_lsp.lsp_settings import build_lsp_settings
+from agent_lsp.lsp_settings import build_initialization_options, build_lsp_settings
 from agent_lsp.runtimes import LanguageRuntime, get_runtime, normalize_language, resolve_image
 
 
@@ -146,6 +146,7 @@ class RuntimeHub:
         # only after the new LSP is live — never leave the session cold.
         spec = get_runtime(language)
         settings = build_lsp_settings(workspace, language, uri_root=None)
+        init_opts = build_initialization_options(language)
         port = _free_port()
         cmd = resolve_lsp_command([c.replace("{port}", str(port)) for c in spec.local_cmd])
         if any("{port}" in c for c in spec.local_cmd):
@@ -154,7 +155,12 @@ class RuntimeHub:
             for _ in range(50):
                 try:
                     client = LspClient.connect_tcp(
-                        workspace, language, "127.0.0.1", port, settings=settings
+                        workspace,
+                        language,
+                        "127.0.0.1",
+                        port,
+                        settings=settings,
+                        initialization_options=init_opts,
                     )
                     break
                 except Exception:
@@ -175,7 +181,13 @@ class RuntimeHub:
                 language_version=language_version or "",
             )
         else:
-            client = LspClient.spawn_local(workspace, language, cmd, settings=settings)
+            client = LspClient.spawn_local(
+                workspace,
+                language,
+                cmd,
+                settings=settings,
+                initialization_options=init_opts,
+            )
             rt = SessionRuntime(
                 session_id=session_id,
                 workspace_path=workspace,
@@ -241,6 +253,7 @@ class RuntimeHub:
         published = started.get("host_port") or host_port
         uri_root = Path(spec.container_workdir)
         settings = build_lsp_settings(workspace, language, uri_root=uri_root)
+        init_opts = build_initialization_options(language)
 
         client = None
         last_err: Exception | None = None
@@ -253,6 +266,7 @@ class RuntimeHub:
                     int(published),
                     uri_root=uri_root,
                     settings=settings,
+                    initialization_options=init_opts,
                 )
                 break
             except Exception as exc:
@@ -363,7 +377,7 @@ def _find_seed_file(root: Path, language: str) -> Path | None:
     patterns = {
         "go": ["**/*.go"],
         "python": ["**/*.py"],
-        "typescript": ["**/*.ts", "**/*.tsx"],
+        "typescript": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"],
         "rust": ["**/*.rs"],
         "cpp": [
             "**/*.cpp",

@@ -36,6 +36,7 @@ RUNTIMES: dict[str, LanguageRuntime] = {
     "typescript": LanguageRuntime(
         language="typescript",
         image="ghcr.io/hewimetall/agent-lsp-typescript:latest",
+        # tsserver path is passed via LSP initialize options (see lsp_settings).
         cmd=["typescript-language-server", "--stdio"],
         local_cmd=["typescript-language-server", "--stdio"],
     ),

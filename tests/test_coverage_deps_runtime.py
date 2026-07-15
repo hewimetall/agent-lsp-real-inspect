@@ -206,3 +206,13 @@ def test_cpp_settings_picks_compile_commands(tmp_path: Path) -> None:
     (build / "compile_commands.json").write_text("[]\n", encoding="utf-8")
     settings = build_lsp_settings(tmp_path, "cpp", uri_root=Path("/workspace"))
     assert settings["clangd"]["compilationDatabasePath"] == "/workspace/build"
+
+
+def test_typescript_initialization_options_point_at_image_tsserver() -> None:
+    from agent_lsp.lsp_settings import build_initialization_options
+
+    opts = build_initialization_options("typescript")
+    path = opts["tsserver"]["path"]
+    assert path.endswith("typescript/lib/tsserver.js")
+    assert opts["tsserver"]["fallbackPath"] == path
+    assert build_initialization_options("python") == {}
