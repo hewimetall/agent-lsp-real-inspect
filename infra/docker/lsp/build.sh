@@ -13,7 +13,7 @@ REGISTRY="${REGISTRY:-ghcr.io/hewimetall}"
 TAG="${TAG:-latest}"
 
 if [[ $# -eq 0 ]]; then
-  LANGS=(go python typescript rust)
+  LANGS=(go python typescript rust cpp)
 else
   LANGS=("$@")
 fi

@@ -3,7 +3,7 @@
 
 agent-lsp connects to containers on TCP :3737 (see agent_lsp.runtimes /
 runtime_hub.ensure_container). gopls can listen natively; pyright,
-typescript-language-server, and rust-analyzer need this bridge.
+typescript-language-server, rust-analyzer, and clangd need this bridge.
 
 Usage:
   stdio_tcp_bridge.py [--host 0.0.0.0] [--port 3737] -- <lsp> [args...]

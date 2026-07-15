@@ -17,8 +17,8 @@ class LanguageRuntime:
     container_workdir: str = "/workspace"
 
 
-# Container images: infra/docker/lsp/{go,python,typescript,rust}/Dockerfile
-# python/typescript/rust images ENTRYPOINT stdio↔TCP bridge on :3737; Cmd = below.
+# Container images: infra/docker/lsp/{go,python,typescript,rust,cpp}/Dockerfile
+# python/typescript/rust/cpp images ENTRYPOINT stdio↔TCP bridge on :3737; Cmd = below.
 RUNTIMES: dict[str, LanguageRuntime] = {
     "go": LanguageRuntime(
         language="go",
@@ -44,6 +44,12 @@ RUNTIMES: dict[str, LanguageRuntime] = {
         image="ghcr.io/hewimetall/agent-lsp-rust:latest",
         cmd=["rust-analyzer"],
         local_cmd=["rust-analyzer"],
+    ),
+    "cpp": LanguageRuntime(
+        language="cpp",
+        image="ghcr.io/hewimetall/agent-lsp-cpp:latest",
+        cmd=["clangd", "--background-index", "--header-insertion=never"],
+        local_cmd=["clangd", "--background-index", "--header-insertion=never"],
     ),
 }
 
@@ -87,9 +93,10 @@ INSTALL_VERSION_IMAGES: dict[str, dict[str, str]] = {
 
 INSTALL_DEFAULT_IMAGES: dict[str, str] = {
     "python": "python:3.12-bookworm",
-    "go": "golang:1.23-bookworm",
+    "go": "golang:1.24-bookworm",
     "typescript": "node:22-bookworm",
     "rust": "rust:1-bookworm",
+    "cpp": "debian:bookworm",
 }
 
 _VERSION_RE = re.compile(r"^v?(?P<main>\d+(?:\.\d+)?)")
@@ -99,6 +106,8 @@ def normalize_language(language: str) -> str:
     key = language.lower().strip()
     if key in {"js", "ts", "javascript"}:
         return "typescript"
+    if key in {"c", "cc", "cxx", "c++", "cplusplus", "clang", "clangd"}:
+        return "cpp"
     return key
 
 

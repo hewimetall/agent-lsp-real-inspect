@@ -363,16 +363,22 @@ def _find_seed_file(root: Path, language: str) -> Path | None:
     patterns = {
         "go": ["**/*.go"],
         "python": ["**/*.py"],
-        "typescript": ["**/*.{ts,tsx}"],
+        "typescript": ["**/*.ts", "**/*.tsx"],
         "rust": ["**/*.rs"],
+        "cpp": [
+            "**/*.cpp",
+            "**/*.cc",
+            "**/*.cxx",
+            "**/*.c",
+            "**/*.hpp",
+            "**/*.hh",
+            "**/*.hxx",
+            "**/*.h",
+        ],
     }
     skip = {"node_modules", "target", ".venv", env_layout.AGENT_LSP_DIR, "vendor"}
     for pattern in patterns.get(normalize_language(language), ["**/*"]):
-        if "{ts,tsx}" in pattern:
-            cands = list(root.glob("**/*.ts")) + list(root.glob("**/*.tsx"))
-        else:
-            cands = list(root.glob(pattern))
-        for p in cands:
+        for p in root.glob(pattern):
             if p.is_file() and not any(part in skip for part in p.parts):
                 return p
     return None
