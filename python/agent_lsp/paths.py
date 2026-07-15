@@ -11,6 +11,25 @@ PROJECTS_DIR = Path(os.environ.get("AGENT_LSP_PROJECTS", "projects"))
 WORKSPACES_DIR = Path(os.environ.get("AGENT_LSP_WORKSPACES", "workspaces"))
 CACHE_DIR = Path(os.environ.get("AGENT_LSP_CACHE", "cache"))
 
+
+def mirrors_dir() -> Path:
+    """Bare mirror clones root — keep in sync with ``agent_lsp.mirrors.mirrors_root``.
+
+    ``AGENT_LSP_MIRRORS`` wins; else sibling of ``AGENT_LSP_PROJECTS`` when that
+    path is absolute / non-default; else ``./mirrors``.
+    """
+    override = (os.environ.get("AGENT_LSP_MIRRORS") or "").strip()
+    if override:
+        return Path(override)
+    projects = PROJECTS_DIR
+    if projects.is_absolute() or str(projects) not in {"projects", "."}:
+        return projects.parent / "mirrors"
+    return Path("mirrors")
+
+
+# Snapshot at import for callers that still read ``MIRRORS_DIR``; prefer mirrors_dir().
+MIRRORS_DIR = mirrors_dir()
+
 _SAFE_ID = re.compile(r"^[a-zA-Z0-9._-]{1,128}$")
 
 
@@ -29,7 +48,7 @@ def workspace_path(workspace_id: str) -> Path:
 
 
 def ensure_data_dirs() -> None:
-    for d in (STATE_DIR, PROJECTS_DIR, WORKSPACES_DIR, CACHE_DIR):
+    for d in (STATE_DIR, PROJECTS_DIR, WORKSPACES_DIR, CACHE_DIR, mirrors_dir()):
         d.mkdir(parents=True, exist_ok=True)
 
 
