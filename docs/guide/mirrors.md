@@ -38,6 +38,24 @@ uv run python scripts/mirror-sync.py sync ceph --force
 Uses **git CLI** (shallow `--depth` or `--mirror`). Scout import still uses
 gix (`import_local` from the bare path) — no network at MCP time.
 
+## Chat prompt template
+
+Copy into chat and fill:
+
+```text
+/lsp-mirror
+
+mirror_ids: <ceph, minio, …>
+sync_now: <yes|no>
+language: <python|go|typescript|rust>
+language_version: <e.g. 3.12>
+ensure_runtime: <yes|no>
+warm_index: <yes|no>
+notes: <optional>
+```
+
+Skill: [`skills/lsp-mirror/SKILL.md`](../../skills/lsp-mirror/SKILL.md).
+
 ## Onboard from mirror
 
 ```text
