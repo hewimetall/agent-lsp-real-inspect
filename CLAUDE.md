@@ -5,9 +5,10 @@ Prefer MCP scout tools over grep/read for code intelligence.
 **Long tools require `task=True`:** `import_project`, `ensure_runtime`, `warm_index`.
 **Before editing:** `blast_radius` on touched files.
 **Before analysis:** `warm_index` completed for the session.
-**Onboard:** `/lsp-onboard` → import → checkout → ensure_runtime → warm_index.
-**Mirrors:** skill `lsp-mirror` + `infra/mirrors/REQUEST.template.md` (plain chat
-fields, **not** MCP `/prompts`) → manual `mirror-sync.py` → `source="mirror:<id>"`.
+**Onboard:** skill `lsp-onboard` + [`infra/requests/onboard.template.md`](infra/requests/onboard.template.md).
+**Mirrors:** skill `lsp-mirror` + [`infra/requests/mirror.template.md`](infra/requests/mirror.template.md)
+(plain chat fields, **not** MCP `/prompts`) → manual `mirror-sync.py` → `source="mirror:<id>"`.
+Important request templates: [`infra/requests/README.md`](infra/requests/README.md).
 
 | Task | Tool |
 |------|------|

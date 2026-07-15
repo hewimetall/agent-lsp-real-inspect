@@ -56,3 +56,7 @@ On initialize the server logs `clientInfo.name` / version / caps
 select the progress-first path.
 
 Durable queue is SQLite `state/tasks.db` (not Docket). See ADR-0001…0004, ADR-0010.
+
+Chat request templates (important skills only, **not** MCP `/prompts`):
+[`infra/requests/README.md`](../../infra/requests/README.md).
+

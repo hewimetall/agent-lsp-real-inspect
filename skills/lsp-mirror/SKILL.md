@@ -8,8 +8,9 @@ description: Sync local git mirrors by hand, then onboard a workspace from mirro
 Heavy trees live in [`infra/mirrors/mirrors.toml`](../../infra/mirrors/mirrors.toml).
 **MCP never pulls them** — sync on the host, then `import_project(source="mirror:<id>")`.
 
-User fields (ordinary chat message — **not** MCP `/prompts`): see
-[`infra/mirrors/REQUEST.template.md`](../../infra/mirrors/REQUEST.template.md).
+User fields (ordinary chat — **not** MCP `/prompts`):
+[`infra/requests/mirror.template.md`](../../infra/requests/mirror.template.md).
+Index of important templates: [`infra/requests/README.md`](../../infra/requests/README.md).
 
 ## Agent checklist
 

@@ -52,10 +52,11 @@ Symlink escapes out of `AGENT_LSP_MIRRORS` are rejected after `resolve()`.
 
 ## Chat request fields (not MCP /prompts)
 
-Fill an ordinary chat message — template file:
-[`infra/mirrors/REQUEST.template.md`](../../infra/mirrors/REQUEST.template.md).
+Important templates (from agent-lsp skills): [`infra/requests/README.md`](../../infra/requests/README.md).
 
-Do **not** register or serve this via FastMCP `@mcp.prompt` / Cursor Prompt UI.
+Mirror fields: [`infra/requests/mirror.template.md`](../../infra/requests/mirror.template.md).
+
+Do **not** register or serve these via FastMCP `@mcp.prompt` / Cursor Prompt UI.
 
 Agent steps: [`skills/lsp-mirror/SKILL.md`](../../skills/lsp-mirror/SKILL.md).
 

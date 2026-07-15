@@ -3,7 +3,10 @@ name: lsp-onboard
 description: Open real sources into a warm scout session (task=True required).
 ---
 
-# /lsp-onboard
+# lsp-onboard
+
+Chat fields (not MCP `/prompts`):
+[`infra/requests/onboard.template.md`](../../infra/requests/onboard.template.md).
 
 1. `create_session`
 2. `import_project(project_id, source)` with **`task=True`**
