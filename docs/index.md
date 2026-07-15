@@ -11,6 +11,7 @@
 | [guide/workspace-deps-validation.md](guide/workspace-deps-validation.md) | **FIXED** validation report (vmcp GraphQL aliases) |
 | [guide/runbook-solo.md](guide/runbook-solo.md) | Raise agent-lsp alone (step-by-step) |
 | [guide/runbook-with-vmcp.md](guide/runbook-with-vmcp.md) | Raise agent-lsp **with** vmcp gateway |
+| [guide/mirrors.md](guide/mirrors.md) | Local git mirrors (TOML + manual sync) |
 
 Examples: [`infra/vmcp/`](../infra/vmcp/) — registry + sidecar for vmcp.
 

@@ -10,6 +10,7 @@ STATE_DIR = Path(os.environ.get("AGENT_LSP_STATE", "state"))
 PROJECTS_DIR = Path(os.environ.get("AGENT_LSP_PROJECTS", "projects"))
 WORKSPACES_DIR = Path(os.environ.get("AGENT_LSP_WORKSPACES", "workspaces"))
 CACHE_DIR = Path(os.environ.get("AGENT_LSP_CACHE", "cache"))
+MIRRORS_DIR = Path(os.environ.get("AGENT_LSP_MIRRORS", "mirrors"))
 
 _SAFE_ID = re.compile(r"^[a-zA-Z0-9._-]{1,128}$")
 
@@ -29,7 +30,7 @@ def workspace_path(workspace_id: str) -> Path:
 
 
 def ensure_data_dirs() -> None:
-    for d in (STATE_DIR, PROJECTS_DIR, WORKSPACES_DIR, CACHE_DIR):
+    for d in (STATE_DIR, PROJECTS_DIR, WORKSPACES_DIR, CACHE_DIR, MIRRORS_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
 

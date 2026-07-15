@@ -15,3 +15,6 @@ curl -fsS -H "Authorization: Bearer $AGENT_LSP_BEARER_TOKEN" \
   -H 'Accept: application/json, text/event-stream' \
   https://lsp.runmcp.ru/mcp
 ```
+
+Heavy trees (Ceph, CPython, …): sync mirrors by hand — see
+[`docs/guide/mirrors.md`](../../docs/guide/mirrors.md).

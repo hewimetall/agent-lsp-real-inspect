@@ -5,7 +5,8 @@ while emitting progress.
 
 ## Tools
 
-- `import_project` — git URL or local path → bare repo
+- `import_project` — git URL, local path, or `mirror:<id>` → bare repo
+  (mirrors must be synced by hand — see [`mirrors.md`](mirrors.md))
 - `ensure_runtime` — start LSP; optional `language_version` / `image`
 - `install_workspace_deps` — pip/uv/npm/pnpm/go (+ optional apt in same container)
 - `install_apt_packages` — apt list with **no allowlist**; persisted for later installs
