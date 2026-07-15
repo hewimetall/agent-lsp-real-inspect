@@ -5,7 +5,8 @@ while emitting progress.
 
 ## Tools
 
-- `import_project` — git URL or local path → bare repo
+- `import_project` — git URL, local path, or `mirror:<id>` → bare repo
+  (mirrors must be synced by hand — see [`mirrors.md`](mirrors.md))
 - `ensure_runtime` — start LSP; optional `language_version` / `image`
 - `install_workspace_deps` — pip/uv/npm/pnpm/go (+ optional apt in same container)
 - `install_apt_packages` — apt list with **no allowlist**; persisted for later installs
@@ -70,5 +71,5 @@ Registered via FastMCP `@mcp.prompt` in `python/agent_lsp/prompts.py` (not an HT
 | `safe_edit` | blast-gate then edit worktree |
 | `verify` | re-warm / re-blast after edits |
 
-Clients: `prompts/list` / `prompts/get`. Skills under `/skills` still describe the same flows.
-
+Clients: `prompts/list` / `prompts/get`. Skills under `/skills` and field layouts under
+[`infra/requests/`](../../infra/requests/README.md) describe the same flows.

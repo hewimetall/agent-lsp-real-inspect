@@ -278,6 +278,10 @@ async def import_project(
 ) -> dict[str, Any]:
     """Import real sources into a bare repo (gix).
 
+    ``source`` may be a git URL, a local path, or ``mirror:<id>`` /
+    ``mirror://<id>`` from ``infra/mirrors/mirrors.toml`` (must be synced
+    first via ``scripts/mirror-sync.py`` — never auto-fetched).
+
     Prefer MCP ``task=True`` when the client supports Tasks; Cursor uses
     ordinary ``tools/call`` + ``notifications/progress``.
     """

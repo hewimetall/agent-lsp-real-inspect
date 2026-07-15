@@ -3,11 +3,16 @@ name: lsp-onboard
 description: Open real sources into a warm scout session (task=True required).
 ---
 
-# /lsp-onboard
+# lsp-onboard
+
+Chat fields (not MCP `/prompts`):
+[`infra/requests/onboard.template.md`](../../infra/requests/onboard.template.md).
 
 1. `create_session`
 2. `import_project(project_id, source)` with **`task=True`**
-   - `source` = git URL **or** local path (clone/import via gix)
+   - `source` = git URL, local path, **or** `mirror:<id>` (from
+     [`infra/mirrors/mirrors.toml`](../../infra/mirrors/mirrors.toml);
+     sync first: `uv run python scripts/mirror-sync.py sync <id>`)
 3. `checkout_workspace(session_id, project_id)`
 4. Optional bootstrap:
    - `install_apt_packages(session_id, packages=[...])` **`task=True`** — no allowlist

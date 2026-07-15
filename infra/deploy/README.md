@@ -25,5 +25,9 @@ curl -fsS -H "Authorization: Bearer $AGENT_LSP_BEARER_TOKEN" \
 | `/etc/agent-lsp/agent-lsp.env` | `AGENT_LSP_ALLOW_LOCAL=0` |
 | `agent-lsp.service` | `Environment=AGENT_LSP_ALLOW_LOCAL=0` (defense in depth) |
 | Bootstrap images | `make -C infra/docker/lsp all` + `docker pull python:3.12-bookworm` (fail closed) |
+| Mirrors | `AGENT_LSP_MIRRORS` + `AGENT_LSP_MIRRORS_TOML` — sync by hand |
 
 Local pyright/gopls is gated by `AGENT_LSP_ALLOW_LOCAL=1` (tests/dev only).
+
+Heavy trees (Ceph, CPython, …): sync mirrors by hand — see
+[`docs/guide/mirrors.md`](../../docs/guide/mirrors.md).

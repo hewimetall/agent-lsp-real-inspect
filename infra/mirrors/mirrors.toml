@@ -1,0 +1,87 @@
+# Local git mirrors for heavy / build-from-source trees.
+# Sync is ALWAYS manual — never pulled by import_project / MCP.
+#
+#   uv run python scripts/mirror-sync.py list
+#   uv run python scripts/mirror-sync.py status
+#   uv run python scripts/mirror-sync.py sync ceph minio
+#   uv run python scripts/mirror-sync.py sync          # all with url set
+#
+# Then onboard from mirror:
+#   import_project(project_id="ceph", source="mirror:ceph")
+#   checkout_workspace(...)
+#
+# Env:
+#   AGENT_LSP_MIRRORS       — bare repos dir (default: <AGENT_LSP_CACHE>/../mirrors or ./mirrors)
+#   AGENT_LSP_MIRRORS_TOML  — override path to this file
+
+[mirrors]
+# Directory for bare clones is set via AGENT_LSP_MIRRORS (not here).
+
+[[mirror]]
+id = "ceph"
+url = "https://github.com/ceph/ceph.git"
+ref = "main"
+depth = 1
+kind = "shallow"
+notes = "Ceph: C++ core + src/pybind/mgr (Python). Full history is huge — keep depth=1."
+
+[[mirror]]
+id = "cngp"
+# Fill the real URL before sync (internal / protocol repo).
+url = ""
+ref = "main"
+depth = 1
+kind = "shallow"
+notes = "CNGP — set url= then: mirror-sync.py sync cngp"
+
+[[mirror]]
+id = "minio"
+url = "https://github.com/minio/minio.git"
+ref = "master"
+depth = 1
+kind = "shallow"
+notes = "MinIO object storage (Go)."
+
+[[mirror]]
+id = "cpython"
+url = "https://github.com/python/cpython.git"
+ref = "main"
+depth = 1
+kind = "shallow"
+notes = "CPython sources (build / extension research)."
+
+[[mirror]]
+id = "postgres"
+url = "https://github.com/postgres/postgres.git"
+ref = "master"
+depth = 1
+kind = "shallow"
+notes = "PostgreSQL sources."
+
+# Python libs that typically need a compiler / system libs when built from source.
+[[mirror]]
+id = "cryptography"
+url = "https://github.com/pyca/cryptography.git"
+ref = "main"
+depth = 1
+kind = "shallow"
+tags = ["python-build"]
+notes = "Needs rustc + OpenSSL headers to build wheels from source."
+
+[[mirror]]
+id = "psycopg"
+url = "https://github.com/psycopg/psycopg.git"
+ref = "master"
+depth = 1
+kind = "shallow"
+tags = ["python-build"]
+notes = "psycopg3 — needs libpq / pg_config for C extension builds."
+
+[[mirror]]
+id = "numpy"
+url = "https://github.com/numpy/numpy.git"
+ref = "main"
+depth = 1
+kind = "shallow"
+tags = ["python-build"]
+notes = "Needs a C/Fortran toolchain + meson/ninja for from-source builds."

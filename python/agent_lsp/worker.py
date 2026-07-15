@@ -108,6 +108,7 @@ class ScoutWorker:
             self._tasks.update(tid, status="error", error=str(exc))
 
     def _import_project(self, tid: str, task: dict[str, Any]) -> None:
+        from agent_lsp.mirrors import resolve_source
         from agent_lsp.paths import project_bare_path
         from agent_lsp_git import GitService
 
@@ -121,13 +122,27 @@ class ScoutWorker:
         if bare.exists():
             self._tasks.update(tid, status="error", error=f"project_exists: {project_id}")
             return
+        try:
+            resolved = resolve_source(source)
+        except (FileNotFoundError, KeyError, ValueError) as exc:
+            self._tasks.update(tid, status="error", error=str(exc))
+            return
         git = GitService()
-        src = Path(source)
+        src = Path(str(resolved))
         if src.exists():
             path = git.import_local(str(src.resolve()), str(bare))
+            origin = f"mirror→{src}" if str(resolved) != source else str(src)
         else:
-            path = git.clone_bare(source, str(bare))
-        result = json.dumps({"project_id": project_id, "bare": path, "source": source})
+            path = git.clone_bare(str(resolved), str(bare))
+            origin = str(resolved)
+        result = json.dumps(
+            {
+                "project_id": project_id,
+                "bare": path,
+                "source": source,
+                "resolved_source": origin,
+            }
+        )
         self._tasks.update(tid, status="done", artifact=result, logs="import_project ok")
 
     def _ensure_runtime(self, tid: str, task: dict[str, Any]) -> None:

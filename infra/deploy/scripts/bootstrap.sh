@@ -58,7 +58,7 @@ if [[ "$BUILD_LSP_IMAGES" == "1" ]]; then
   docker pull python:3.12-bookworm
 fi
 
-mkdir -p "$DATA_ROOT"/{state,projects,workspaces,cache} /etc/agent-lsp
+mkdir -p "$DATA_ROOT"/{state,projects,workspaces,cache,mirrors} /etc/agent-lsp
 
 if [[ ! -f /etc/agent-lsp/bearer.env ]]; then
   TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
@@ -76,6 +76,8 @@ AGENT_LSP_STATE=${DATA_ROOT}/state
 AGENT_LSP_PROJECTS=${DATA_ROOT}/projects
 AGENT_LSP_WORKSPACES=${DATA_ROOT}/workspaces
 AGENT_LSP_CACHE=${DATA_ROOT}/cache
+AGENT_LSP_MIRRORS=${DATA_ROOT}/mirrors
+AGENT_LSP_MIRRORS_TOML=${INSTALL_ROOT}/infra/mirrors/mirrors.toml
 # Production: Docker-only LSP / deps (never enable AGENT_LSP_ALLOW_LOCAL here)
 AGENT_LSP_ALLOW_LOCAL=0
 FASTMCP_TRANSPORT=http
@@ -88,6 +90,9 @@ chmod 600 /etc/agent-lsp/agent-lsp.env
 chown root:caddy /etc/agent-lsp/bearer.env 2>/dev/null || chown root:root /etc/agent-lsp/bearer.env
 chmod 640 /etc/agent-lsp/bearer.env
 
+echo "==> mirrors: sync by hand when needed"
+echo "    uv run python scripts/mirror-sync.py list"
+echo "    uv run python scripts/mirror-sync.py sync ceph minio …"
 install -m 0644 infra/deploy/caddy/Caddyfile /etc/caddy/Caddyfile
 # Ensure caddy loads bearer env
 mkdir -p /etc/systemd/system/caddy.service.d
