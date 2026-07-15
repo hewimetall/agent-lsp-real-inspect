@@ -76,7 +76,8 @@ Edit `demo/agent-lsp/registry.json`:
 
 ## 3. Enable tasks on vmcp (recommended)
 
-Long agent-lsp tools use FastMCP `TaskConfig(mode="required")`. Behind vmcp:
+Long agent-lsp tools use FastMCP `TaskConfig(mode="optional")` (Cursor uses
+progress; task-capable clients may still pass `task=True`). Behind vmcp:
 
 - **GraphQL sync** (`query_graphql`) awaits the upstream call — only works if the
   gateway invokes the tool in a way FastMCP accepts as a task, **or**

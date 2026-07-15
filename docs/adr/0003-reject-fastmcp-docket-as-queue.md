@@ -27,7 +27,7 @@ FastMCP background tasks (`task=True`) используют **Docket**. Backends
 1. Tool → `TaskStore.submit` (наш `task_id`).
 2. Worker исполняет.
 3. Tool ждёт SQLite и зеркалит статусы через `Progress` → `notifications/tasks/status`.
-4. `mode="required"` для long tools.
+4. `mode="optional"` для long tools (Cursor без Tasks → sync+progress).
 
 Мост: `python/agent_lsp/task_bridge.py`.
 

@@ -22,7 +22,7 @@
 
 ## Task pipeline (mandatory)
 
-Long tools use `TaskConfig(mode="required")`:
+Long tools use `TaskConfig(mode="optional")` (Cursor → sync + progress):
 
 | Tool | Target | Notes |
 |------|--------|-------|

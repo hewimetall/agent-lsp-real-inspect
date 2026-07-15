@@ -6,7 +6,6 @@ import json
 import uuid
 from contextlib import suppress
 from datetime import timedelta
-from pathlib import Path
 from typing import Any, cast
 
 from fastmcp import Context, FastMCP
@@ -15,12 +14,15 @@ from fastmcp.server.tasks import TaskConfig
 
 from agent_lsp import paths as paths_mod
 from agent_lsp.blast import blast_radius, blast_to_dict
+from agent_lsp.client_compat import prefers_progress_over_tasks
+from agent_lsp.client_middleware import ClientCompatMiddleware
 from agent_lsp.paths import ensure_data_dirs, project_bare_path, require_id, workspace_path
 from agent_lsp.runtime_hub import HUB
 from agent_lsp.task_bridge import await_sqlite_task
 from agent_lsp.worker import wake_worker
 
 mcp = FastMCP("agent-lsp")
+mcp.add_middleware(ClientCompatMiddleware())
 
 _state: Any = None
 _git: Any = None
@@ -28,8 +30,10 @@ _docker: Any = None
 _docker_error: str | None = None
 _tasks: Any = None
 
-# Long scout ops REQUIRE MCP task=True (SEP-1686) — ADR-0001 / ADR-0003.
-_SCOUT_TASK = TaskConfig(mode="required", poll_interval=timedelta(seconds=1))
+# Long scout ops: optional Tasks (SEP-1686) so Cursor can use ordinary tools/call
+# + notifications/progress. Task-capable clients (vmcp) may still pass task=True.
+# ADR-0001 amended for Cursor compat — see docs/guide/tasks.md.
+_SCOUT_TASK = TaskConfig(mode="optional", poll_interval=timedelta(seconds=1))
 
 
 def get_state() -> Any:
@@ -72,7 +76,7 @@ def get_docker() -> Any | None:
 
         _docker = DockerService()
         return _docker
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         _docker_error = str(exc)
         return None
 
@@ -103,7 +107,7 @@ def _client_for(session_id: str) -> Any | dict[str, Any]:
         return {
             "error": "runtime_not_ready",
             "session_id": session_id,
-            "hint": "call ensure_runtime then warm_index (with task=True)",
+            "hint": "call ensure_runtime then warm_index",
         }
     return rt.client
 
@@ -112,17 +116,63 @@ def _task_row(row: object) -> dict[str, Any]:
     return cast(dict[str, Any], dict(row))  # type: ignore[arg-type]
 
 
-async def _wait_queued_task(tid: str, progress: Progress) -> dict[str, Any]:
-    reporter: Progress | None = progress if getattr(progress, "_impl", None) is not None else None
+class _CtxProgress:
+    """Bridge SQLite status lines onto Context.report_progress (Cursor path)."""
+
+    def __init__(self, ctx: Context, total: float = 3.0) -> None:
+        self._ctx = ctx
+        self._total = total
+        self._current = 0.0
+
+    async def set_message(self, message: str | None) -> None:
+        if not message:
+            return
+        with suppress(Exception):
+            await self._ctx.report_progress(self._current, self._total, message)
+
+    async def set_total(self, total: float) -> None:
+        self._total = float(total)
+
+    async def increment(self, amount: float = 1.0) -> None:
+        self._current = min(self._total, self._current + float(amount))
+        with suppress(Exception):
+            await self._ctx.report_progress(self._current, self._total, None)
+
+
+def _progress_reporter(
+    progress: Progress, ctx: Context | None
+) -> tuple[Any | None, _CtxProgress | None]:
+    """Prefer FastMCP Progress impl; fall back to Context for Cursor-style clients."""
+    if getattr(progress, "_impl", None) is not None:
+        return progress, None
+    if ctx is not None and prefers_progress_over_tasks(ctx):
+        return None, _CtxProgress(ctx)
+    if ctx is not None:
+        return None, _CtxProgress(ctx)
+    return None, None
+
+
+async def _wait_queued_task(
+    tid: str, progress: Progress, ctx: Context | None = None
+) -> dict[str, Any]:
+    reporter, ctx_prog = _progress_reporter(progress, ctx)
+    sink: Any | None = reporter if reporter is not None else ctx_prog
     if reporter is not None:
         with suppress(Exception):
             await reporter.set_total(3)
             await reporter.set_message(f"task_id={tid} status=queued")
+    elif ctx_prog is not None:
+        with suppress(Exception):
+            await ctx_prog.set_total(3)
+            await ctx_prog.set_message(f"task_id={tid} status=queued")
     try:
-        row = await await_sqlite_task(get_tasks(), tid, reporter)
+        row = await await_sqlite_task(get_tasks(), tid, sink)
         if reporter is not None:
             with suppress(Exception):
                 await reporter.increment(3)
+        elif ctx_prog is not None:
+            with suppress(Exception):
+                await ctx_prog.increment(3)
         # Prefer structured artifact JSON when present.
         art = row.get("artifact")
         if row.get("status") == "done" and art:
@@ -219,17 +269,17 @@ async def import_project(
     project_id: str,
     source: str,
     ctx: Context | None = None,
-    progress: Progress = Progress(),  # noqa: B008
+    progress: Progress = Progress(),
 ) -> dict[str, Any]:
-    """Import real sources into a bare repo (gix). Requires MCP task=True.
+    """Import real sources into a bare repo (gix).
 
-    `source` is a local git path or a remote URL.
+    Prefer MCP ``task=True`` when the client supports Tasks; Cursor uses
+    ordinary ``tools/call`` + ``notifications/progress``.
     """
-    _ = ctx
     queued = enqueue_import_project(project_id, source)
     if "error" in queued:
         return queued
-    return await _wait_queued_task(str(queued["task_id"]), progress)
+    return await _wait_queued_task(str(queued["task_id"]), progress, ctx)
 
 
 @mcp.tool()
@@ -253,7 +303,7 @@ def checkout_workspace(
     wt = workspace_path(wid)
     try:
         path = get_git().add_worktree(str(bare), str(wt), ref_name)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return {"error": "checkout_failed", "detail": str(exc)}
     get_state().create_workspace(pid, path, ref_name=ref_name or "HEAD", workspace_id=wid)
     get_state().set_active_workspace(session_id, wid)
@@ -278,7 +328,7 @@ def commit_workspace(
     _, ws = bound
     try:
         cid = get_git().commit(ws["path"], message, paths or [])
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return {"error": "commit_failed", "detail": str(exc)}
     return {"commit": cid, "workspace_id": ws["workspace_id"]}
 
@@ -323,15 +373,14 @@ async def ensure_runtime(
     language_version: str = "",
     image: str = "",
     ctx: Context | None = None,
-    progress: Progress = Progress(),  # noqa: B008
+    progress: Progress = Progress(),
 ) -> dict[str, Any]:
     """Start LSP runtime held by the session.
 
     ``language_version`` pins the interpreter/toolchain (e.g. python ``3.11``,
     go ``1.23``, node ``22``). ``image`` overrides the resolved LSP image tag.
-    Requires MCP task=True.
+    Cursor: sync call + progress; task-capable clients may pass task=True.
     """
-    _ = ctx
     queued = enqueue_ensure_runtime(
         session_id,
         language,
@@ -341,7 +390,7 @@ async def ensure_runtime(
     )
     if "error" in queued:
         return queued
-    return await _wait_queued_task(str(queued["task_id"]), progress)
+    return await _wait_queued_task(str(queued["task_id"]), progress, ctx)
 
 
 def enqueue_install_workspace_deps(
@@ -393,15 +442,14 @@ async def install_workspace_deps(
     restart_runtime: bool = True,
     install_image: str = "",
     ctx: Context | None = None,
-    progress: Progress = Progress(),  # noqa: B008
+    progress: Progress = Progress(),
 ) -> dict[str, Any]:
     """Install project / ad-hoc deps into the active workspace (venv, node_modules, go mod).
 
     For Python, creates ``.agent-lsp/venv`` so blast/LSP resolve into site-packages.
     Optional ``apt_packages`` run in the same throwaway install container (no allowlist).
-    Requires MCP task=True.
+    Cursor: sync call + progress; task-capable clients may pass task=True.
     """
-    _ = ctx
     queued = enqueue_install_workspace_deps(
         session_id,
         language=language,
@@ -415,7 +463,7 @@ async def install_workspace_deps(
     )
     if "error" in queued:
         return queued
-    return await _wait_queued_task(str(queued["task_id"]), progress)
+    return await _wait_queued_task(str(queued["task_id"]), progress, ctx)
 
 
 def enqueue_install_apt_packages(
@@ -457,15 +505,14 @@ async def install_apt_packages(
     language_version: str = "",
     install_image: str = "",
     ctx: Context | None = None,
-    progress: Progress = Progress(),  # noqa: B008
+    progress: Progress = Progress(),
 ) -> dict[str, Any]:
     """Record + attempt apt packages with no allowlist validation (build bootstrap).
 
     Names are shell-quoted only. The list is persisted under
     ``.agent-lsp/apt-packages.txt`` and reapplied on ``install_workspace_deps``.
-    Requires MCP task=True.
+    Cursor: sync call + progress; task-capable clients may pass task=True.
     """
-    _ = ctx
     queued = enqueue_install_apt_packages(
         session_id,
         packages,
@@ -475,7 +522,7 @@ async def install_apt_packages(
     )
     if "error" in queued:
         return queued
-    return await _wait_queued_task(str(queued["task_id"]), progress)
+    return await _wait_queued_task(str(queued["task_id"]), progress, ctx)
 
 
 def enqueue_warm_index(session_id: str, timeout_seconds: float = 120.0) -> dict[str, Any]:
@@ -487,7 +534,7 @@ def enqueue_warm_index(session_id: str, timeout_seconds: float = 120.0) -> dict[
         return {
             "error": "runtime_not_ready",
             "session_id": session_id,
-            "hint": "call ensure_runtime first (task=True)",
+            "hint": "call ensure_runtime first",
         }
     payload = json.dumps({"timeout_seconds": timeout_seconds})
     tid = get_tasks().submit(session_id, ws["path"], "warm_index", payload)
@@ -506,14 +553,16 @@ async def warm_index(
     session_id: str,
     timeout_seconds: float = 120.0,
     ctx: Context | None = None,
-    progress: Progress = Progress(),  # noqa: B008
+    progress: Progress = Progress(),
 ) -> dict[str, Any]:
-    """Isolated index + cache warm pipeline. Requires MCP task=True."""
-    _ = ctx
+    """Isolated index + cache warm pipeline.
+
+    Cursor: sync call + progress; task-capable clients may pass task=True.
+    """
     queued = enqueue_warm_index(session_id, timeout_seconds)
     if "error" in queued:
         return queued
-    return await _wait_queued_task(str(queued["task_id"]), progress)
+    return await _wait_queued_task(str(queued["task_id"]), progress, ctx)
 
 
 @mcp.tool()
