@@ -3,7 +3,7 @@
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/hewimetall/agent-lsp-real-inspect.git}"
-REPO_REF="${REPO_REF:-v0.1.0}"
+REPO_REF="${REPO_REF:-v0.1.3}"
 INSTALL_ROOT="${INSTALL_ROOT:-/opt/agent-lsp}"
 DATA_ROOT="${DATA_ROOT:-/var/lib/agent-lsp}"
 DOMAIN="${DOMAIN:-lsp.runmcp.ru}"
