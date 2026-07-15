@@ -388,7 +388,8 @@ class ScoutWorker:
             lang = rt.language
             ver = rt.language_version
             image = rt.image
-            HUB.shutdown(session_id, docker=docker)
+            # force=True: recycle even when language/image match so new deps load.
+            # ensure_* starts the replacement first; put() tears down the old runtime.
             if was_container or not allow_local_runtime():
                 if docker is None:
                     self._tasks.update(
@@ -406,18 +407,35 @@ class ScoutWorker:
                         docker,
                         image_override=image,
                         language_version=ver,
+                        force=True,
                     )
                 except Exception as exc:
+                    # Keep previous container, but mark stale so the next ensure_*
+                    # recycles instead of reusing an LSP that missed the new deps.
+                    stale = HUB.get(session_id)
+                    if stale is not None:
+                        stale.needs_recycle = True
+                        stale.index_status = "cold"
+                        stale.error = f"recycle after deps failed: {exc}"
+                    try:
+                        server.get_state().set_index_status(session_id, "cold")
+                    except Exception:
+                        pass
                     self._tasks.update(
                         tid,
                         status="error",
                         artifact=json.dumps(artifact),
-                        error=f"container restart failed (no local fallback): {exc}",
+                        error=f"container restart failed (previous runtime kept, needs_recycle): {exc}",
                     )
                     return
             else:
                 HUB.ensure_local(
-                    session_id, workspace, lang, docker=docker, language_version=ver
+                    session_id,
+                    workspace,
+                    lang,
+                    docker=docker,
+                    language_version=ver,
+                    force=True,
                 )
             artifact["restarted_runtime"] = True
             server.get_state().set_index_status(session_id, "cold")

@@ -81,6 +81,8 @@ class SessionRuntime:
     local_proc: subprocess.Popen[bytes] | None = None
     language_version: str = ""
     image: str | None = None
+    # True after a failed post-deps recycle — next ensure_* must not reuse this LSP.
+    needs_recycle: bool = False
 
 
 @dataclass
@@ -94,20 +96,20 @@ class RuntimeHub:
         with self._lock:
             return self.sessions.get(session_id)
 
-    def put(self, rt: SessionRuntime) -> None:
+    def put(self, rt: SessionRuntime, docker: Any | None = None) -> None:
         with self._lock:
             prev = self.sessions.get(rt.session_id)
             self.sessions[rt.session_id] = rt
         if prev is not None and prev is not rt:
-            docker = None
-            if prev.runtime_mode == "container":
+            docker_svc = docker
+            if docker_svc is None and prev.runtime_mode == "container":
                 try:
                     from agent_lsp.server import get_docker
 
-                    docker = get_docker()
+                    docker_svc = get_docker()
                 except Exception:
-                    docker = None
-            self._teardown(prev, docker=docker)
+                    docker_svc = None
+            self._teardown(prev, docker=docker_svc)
 
     def drop(self, session_id: str) -> SessionRuntime | None:
         with self._lock:
@@ -121,6 +123,7 @@ class RuntimeHub:
         docker: Any | None = None,
         *,
         language_version: str = "",
+        force: bool = False,
     ) -> SessionRuntime:
         if not allow_local_runtime():
             raise RuntimeError(
@@ -129,25 +132,18 @@ class RuntimeHub:
             )
         existing = self.get(session_id)
         if (
-            existing
+            not force
+            and existing
             and existing.client
+            and not existing.needs_recycle
             and existing.language == language
             and existing.runtime_mode == "local"
             and (existing.language_version or "") == (language_version or "")
         ):
             return existing
-        if existing is not None:
-            # Always pass docker when replacing a container-backed runtime so stop/remove runs.
-            docker_svc = docker
-            if docker_svc is None and existing.runtime_mode == "container":
-                try:
-                    from agent_lsp.server import get_docker
 
-                    docker_svc = get_docker()
-                except Exception:
-                    docker_svc = None
-            self.shutdown(session_id, docker=docker_svc)
-
+        # Start the replacement first. put() tears down the previous runtime
+        # only after the new LSP is live — never leave the session cold.
         spec = get_runtime(language)
         settings = build_lsp_settings(workspace, language, uri_root=None)
         port = _free_port()
@@ -192,8 +188,7 @@ class RuntimeHub:
                 local_proc=None,
                 language_version=language_version or "",
             )
-        with self._lock:
-            self.sessions[session_id] = rt
+        self.put(rt, docker=docker)
         return rt
 
     def ensure_container(
@@ -205,21 +200,26 @@ class RuntimeHub:
         image_override: str | None = None,
         *,
         language_version: str = "",
+        force: bool = False,
     ) -> SessionRuntime:
         image = image_override or resolve_image(language, language_version)
         existing = self.get(session_id)
         if (
-            existing
+            not force
+            and existing
             and existing.client
+            and not existing.needs_recycle
             and existing.language == language
             and existing.runtime_mode == "container"
             and (existing.language_version or "") == (language_version or "")
             and (existing.image or "") == image
         ):
             return existing
-        if existing is not None:
-            self.shutdown(session_id, docker=docker)
 
+        # Start the replacement first (unique name). Only tear down the previous
+        # runtime after the new LSP is reachable — never leave the session cold.
+        # force=True is used after install_workspace_deps so the LSP reloads
+        # site-packages / node_modules even when language/image are unchanged.
         spec: LanguageRuntime = get_runtime(language)
         host_port = _free_port()
         binds, env = _cache_binds_and_env(
@@ -233,7 +233,9 @@ class RuntimeHub:
             env=env,
             host_port=host_port,
             container_port=3737,
-            name=f"agent-lsp-{session_id[:8]}-{normalize_language(language)}",
+            name=(
+                f"agent-lsp-{session_id[:8]}-{normalize_language(language)}-{host_port}"
+            ),
         )
         cid = started["container_id"]
         published = started.get("host_port") or host_port
@@ -253,7 +255,7 @@ class RuntimeHub:
                     settings=settings,
                 )
                 break
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 last_err = exc
                 time.sleep(0.15)
         if client is None:
@@ -276,8 +278,8 @@ class RuntimeHub:
             language_version=language_version or "",
             image=image,
         )
-        with self._lock:
-            self.sessions[session_id] = rt
+        # put() shuts down the previous runtime only after the new one is live.
+        self.put(rt, docker=docker)
         return rt
 
     def refresh_settings(self, session_id: str) -> None:
@@ -295,6 +297,12 @@ class RuntimeHub:
         rt = self.get(session_id)
         if rt is None or rt.client is None:
             raise RuntimeError(f"no runtime for session {session_id}")
+        if rt.needs_recycle:
+            rt.index_status = "error"
+            rt.error = "runtime needs recycle after deps install — call ensure_runtime"
+            with self._lock:
+                self.sessions[session_id] = rt
+            return rt
         rt.index_status = "warming"
         rt.error = None
         # Many servers (pyright, gopls) never emit workDoneProgress end. Bound the

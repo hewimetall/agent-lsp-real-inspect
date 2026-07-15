@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -234,4 +235,199 @@ def test_reclaim_stale_tasks(tmp_path: Path) -> None:
     assert store.get(tid)["status"] == "queued"
     again = store.claim_next()
     assert again["task_id"] == tid
+
+
+def test_needs_recycle_blocks_reuse_and_warm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hub = RuntimeHub()
+    started: list[str] = []
+
+    class FakeDocker:
+        def start_persistent(self, *a: object, **k: object) -> dict[str, object]:
+            started.append("x")
+            return {"container_id": f"cid-{len(started)}", "host_port": 41000 + len(started)}
+
+        def stop(self, cid: str) -> None:
+            return None
+
+        def remove(self, cid: str) -> None:
+            return None
+
+    class DummyClient:
+        def __init__(self, *a: object, **k: object) -> None:
+            self._workspace_loaded = False
+
+        @classmethod
+        def connect_tcp(cls, *a: object, **k: object) -> DummyClient:
+            return cls()
+
+        def wait_until_ready(self, timeout: float = 120.0) -> bool:
+            return True
+
+        def document_symbols(self, file_path: object) -> list[object]:
+            return []
+
+        def shutdown(self) -> None:
+            return None
+
+    monkeypatch.setattr("agent_lsp.runtime_hub.LspClient", DummyClient)
+    monkeypatch.setattr(
+        "agent_lsp.runtime_hub.get_runtime",
+        lambda language: type(
+            "R",
+            (),
+            {
+                "language": language,
+                "image": "img:1",
+                "cmd": ["true"],
+                "local_cmd": ["true"],
+                "container_workdir": "/workspace",
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "agent_lsp.runtime_hub.resolve_image", lambda *a, **k: "img:1"
+    )
+    docker = FakeDocker()
+    first = hub.ensure_container("s-stale", tmp_path, "python", docker, image_override="img:1")
+    first.needs_recycle = True
+    warmed = hub.warm("s-stale", timeout=0.05)
+    assert warmed.index_status == "error"
+    assert "needs recycle" in (warmed.error or "")
+    recycled = hub.ensure_container(
+        "s-stale", tmp_path, "python", docker, image_override="img:1"
+    )
+    assert recycled.container_id != first.container_id
+    assert recycled.needs_recycle is False
+    assert len(started) == 2
+
+    monkeypatch.delenv("AGENT_LSP_ALLOW_LOCAL", raising=False)
+    hub = RuntimeHub()
+    with pytest.raises(RuntimeError, match="local LSP runtimes are disabled"):
+        hub.ensure_local("s", tmp_path, "python")
+
+
+def test_ensure_container_force_recycles_same_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hub = RuntimeHub()
+    started: list[str] = []
+    stopped: list[str] = []
+
+    class FakeDocker:
+        def start_persistent(self, *a: object, **k: object) -> dict[str, object]:
+            name = str(k.get("name") or "c")
+            started.append(name)
+            return {"container_id": f"cid-{len(started)}", "host_port": 40000 + len(started)}
+
+        def stop(self, cid: str) -> None:
+            stopped.append(cid)
+
+        def remove(self, cid: str) -> None:
+            stopped.append(f"rm:{cid}")
+
+    class DummyClient:
+        def __init__(self, *a: object, **k: object) -> None:
+            self._workspace_loaded = False
+
+        @classmethod
+        def connect_tcp(cls, *a: object, **k: object) -> DummyClient:
+            return cls()
+
+        def shutdown(self) -> None:
+            return None
+
+    monkeypatch.setattr("agent_lsp.runtime_hub.LspClient", DummyClient)
+    monkeypatch.setattr(
+        "agent_lsp.runtime_hub.get_runtime",
+        lambda language: type(
+            "R",
+            (),
+            {
+                "language": language,
+                "image": "img:1",
+                "cmd": ["true"],
+                "local_cmd": ["true"],
+                "container_workdir": "/workspace",
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "agent_lsp.runtime_hub.resolve_image", lambda *a, **k: "img:1"
+    )
+    docker = FakeDocker()
+    first = hub.ensure_container("s-force", tmp_path, "python", docker, image_override="img:1")
+    reused = hub.ensure_container("s-force", tmp_path, "python", docker, image_override="img:1")
+    assert reused.container_id == first.container_id
+    assert len(started) == 1
+    forced = hub.ensure_container(
+        "s-force", tmp_path, "python", docker, image_override="img:1", force=True
+    )
+    assert forced.container_id != first.container_id
+    assert len(started) == 2
+    assert first.container_id in stopped
+
+
+def test_run_script_fail_closed_without_docker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agent_lsp.worker import ScoutWorker
+    from agent_lsp._tasks import TaskStore
+    from agent_lsp import server
+
+    monkeypatch.delenv("AGENT_LSP_ALLOW_LOCAL", raising=False)
+    monkeypatch.setattr(server, "get_docker", lambda: None)
+    w = ScoutWorker(TaskStore(str(tmp_path / "t.db")))
+    out = w._run_script(workspace=tmp_path, image="python:3.12-bookworm", script="true")
+    assert out["mode"] == "error"
+    assert "Docker unavailable" in str(out["logs"])
+
+
+def test_ensure_runtime_ignores_prefer_local_without_allow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """prefer_container=false must not escape to host when ALLOW_LOCAL is off."""
+    from agent_lsp.worker import ScoutWorker
+    from agent_lsp._tasks import TaskStore
+    from agent_lsp import server, paths as paths_mod
+    import agent_lsp.runtime_hub as rh
+
+    monkeypatch.delenv("AGENT_LSP_ALLOW_LOCAL", raising=False)
+    paths_mod.STATE_DIR = tmp_path / "state"
+    paths_mod.PROJECTS_DIR = tmp_path / "projects"
+    paths_mod.WORKSPACES_DIR = tmp_path / "workspaces"
+    paths_mod.CACHE_DIR = tmp_path / "cache"
+    for d in (
+        paths_mod.STATE_DIR,
+        paths_mod.PROJECTS_DIR,
+        paths_mod.WORKSPACES_DIR,
+        paths_mod.CACHE_DIR,
+    ):
+        d.mkdir(parents=True, exist_ok=True)
+    server._state = None
+    server._git = None
+    server._tasks = None
+    server._docker = None
+    server._docker_error = "no-docker"
+    monkeypatch.setattr(server, "get_docker", lambda: None)
+    monkeypatch.setattr(server, "wake_worker", lambda tasks: None)
+
+    store = TaskStore(str(tmp_path / "tasks.db"))
+    monkeypatch.setattr(server, "get_tasks", lambda: store)
+    sid = server.create_session()["session_id"]
+    server.create_project("p1")
+    co = server.checkout_workspace(sid, "p1")
+    tid = store.submit(
+        sid,
+        co["path"],
+        "ensure_runtime",
+        json.dumps({"language": "python", "prefer_container": False}),
+    )
+    w = ScoutWorker(store)
+    assert w.process_one() is True
+    row = store.get(tid)
+    assert row["status"] == "error"
+    assert "Docker unavailable" in (row.get("error") or "")
+    assert rh.HUB.get(sid) is None
 

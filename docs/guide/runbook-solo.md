@@ -9,8 +9,11 @@
 |------|-------|
 | Python ≥ 3.12 + uv | `uv --version` |
 | Rust + maturin (PyO3 packages) | `rustc --version` · `uv run maturin --version` |
-| Optional: Docker (container LSP) | `docker info` |
-| Optional: host LSPs for local mode | `rust-analyzer`, `pyright-langserver`, `gopls`, … |
+| **Docker (required for LSP / deps)** | `docker info` |
+| LSP images | `docker images 'ghcr.io/hewimetall/agent-lsp-*'` |
+
+Host LSPs (`pyright-langserver`, …) are **not** used in production. Local mode
+needs `AGENT_LSP_ALLOW_LOCAL=1` + `prefer_container=false` (tests/dev only).
 
 ## 1. Clone & sync
 
@@ -28,9 +31,7 @@ uv run python -c "from agent_lsp.server import mcp; print(mcp.name)"
 # → agent-lsp
 ```
 
-## 2. (Optional) Build LSP images
-
-Needed only for `prefer_container=true`:
+## 2. Build LSP images (required)
 
 ```bash
 make docker-lsp
