@@ -68,7 +68,9 @@ def test_warm_error_when_no_seed(tmp_path: Path) -> None:
     assert rt.index_status == "error"
 
 
-def test_ensure_local_rejects_container_reuse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ensure_local_rejects_container_reuse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("AGENT_LSP_ALLOW_LOCAL", "1")
     hub = RuntimeHub()
     stopped: list[str] = []
@@ -92,6 +94,7 @@ def test_ensure_local_rejects_container_reuse(tmp_path: Path, monkeypatch: pytes
             cmd: list[str],
             *,
             settings: object | None = None,
+            initialization_options: object | None = None,
         ) -> DummyClient:
             return cls()
 
@@ -179,10 +182,10 @@ def test_blast_reports_skipped_missing(tmp_path: Path) -> None:
 def test_warm_index_task_errors_when_index_not_ready(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from agent_lsp.worker import ScoutWorker
-    from agent_lsp._tasks import TaskStore
     import agent_lsp.runtime_hub as rh
     from agent_lsp import server
+    from agent_lsp._tasks import TaskStore
+    from agent_lsp.worker import ScoutWorker
 
     store = TaskStore(str(tmp_path / "tasks.db"))
     hub = RuntimeHub()
@@ -254,6 +257,9 @@ def test_needs_recycle_blocks_reuse_and_warm(
         def remove(self, cid: str) -> None:
             return None
 
+        def is_running(self, cid: str) -> bool:
+            return True
+
     class DummyClient:
         def __init__(self, *a: object, **k: object) -> None:
             self._workspace_loaded = False
@@ -308,6 +314,69 @@ def test_needs_recycle_blocks_reuse_and_warm(
         hub.ensure_local("s", tmp_path, "python")
 
 
+def test_ensure_container_recycles_when_docker_not_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hub = RuntimeHub()
+    started: list[str] = []
+    running: dict[str, bool] = {}
+
+    class FakeDocker:
+        def start_persistent(self, *a: object, **k: object) -> dict[str, object]:
+            started.append("x")
+            cid = f"cid-{len(started)}"
+            running[cid] = True
+            return {"container_id": cid, "host_port": 42000 + len(started)}
+
+        def stop(self, cid: str) -> None:
+            running[cid] = False
+
+        def remove(self, cid: str) -> None:
+            running.pop(cid, None)
+
+        def is_running(self, cid: str) -> bool:
+            return bool(running.get(cid, False))
+
+    class DummyClient:
+        def __init__(self, *a: object, **k: object) -> None:
+            self._workspace_loaded = False
+
+        @classmethod
+        def connect_tcp(cls, *a: object, **k: object) -> DummyClient:
+            return cls()
+
+        def shutdown(self) -> None:
+            return None
+
+    monkeypatch.setattr("agent_lsp.runtime_hub.LspClient", DummyClient)
+    monkeypatch.setattr(
+        "agent_lsp.runtime_hub.get_runtime",
+        lambda language: type(
+            "R",
+            (),
+            {
+                "language": language,
+                "image": "img:1",
+                "cmd": ["true"],
+                "local_cmd": ["true"],
+                "container_workdir": "/workspace",
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "agent_lsp.runtime_hub.resolve_image", lambda *a, **k: "img:1"
+    )
+    docker = FakeDocker()
+    first = hub.ensure_container("s-dead", tmp_path, "python", docker, image_override="img:1")
+    assert first.container_id is not None
+    running[first.container_id] = False
+    second = hub.ensure_container("s-dead", tmp_path, "python", docker, image_override="img:1")
+    assert second.container_id != first.container_id
+    assert len(started) == 2
+    assert first.needs_recycle is True
+    assert first.index_status == "stale"
+
+
 def test_ensure_container_force_recycles_same_identity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -326,6 +395,9 @@ def test_ensure_container_force_recycles_same_identity(
 
         def remove(self, cid: str) -> None:
             stopped.append(f"rm:{cid}")
+
+        def is_running(self, cid: str) -> bool:
+            return True
 
     class DummyClient:
         def __init__(self, *a: object, **k: object) -> None:
@@ -372,9 +444,9 @@ def test_ensure_container_force_recycles_same_identity(
 def test_run_script_fail_closed_without_docker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from agent_lsp.worker import ScoutWorker
-    from agent_lsp._tasks import TaskStore
     from agent_lsp import server
+    from agent_lsp._tasks import TaskStore
+    from agent_lsp.worker import ScoutWorker
 
     monkeypatch.delenv("AGENT_LSP_ALLOW_LOCAL", raising=False)
     monkeypatch.setattr(server, "get_docker", lambda: None)
@@ -388,10 +460,11 @@ def test_ensure_runtime_ignores_prefer_local_without_allow(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """prefer_container=false must not escape to host when ALLOW_LOCAL is off."""
-    from agent_lsp.worker import ScoutWorker
-    from agent_lsp._tasks import TaskStore
-    from agent_lsp import server, paths as paths_mod
     import agent_lsp.runtime_hub as rh
+    from agent_lsp import paths as paths_mod
+    from agent_lsp import server
+    from agent_lsp._tasks import TaskStore
+    from agent_lsp.worker import ScoutWorker
 
     monkeypatch.delenv("AGENT_LSP_ALLOW_LOCAL", raising=False)
     paths_mod.STATE_DIR = tmp_path / "state"

@@ -21,3 +21,9 @@ reloads deps even when language/image are unchanged. Replacement starts first;
 `put()` tears down the previous runtime only after the new LSP is reachable.
 If recycle fails, the previous runtime is kept with `needs_recycle=True` so
 `warm_index` errors and the next `ensure_runtime` must start a fresh LSP.
+
+**Health:** SQLite `index_status=ready` / `containers.status=running` does **not**
+prove the Docker process is alive. A separate Rust binary
+`agent-lsp-runtime-worker` reconciles binds against the Engine API and demotes
+dead rows to `stopped` + session `stale` (see ADR-0012). The Python hub also
+calls `DockerService.is_running` before reusing an in-memory container runtime.

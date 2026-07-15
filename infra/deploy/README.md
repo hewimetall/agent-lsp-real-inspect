@@ -16,7 +16,14 @@ cd /opt/agent-lsp
 git fetch --tags origin
 git checkout v0.1.4
 uv sync --extra dev && uv run make develop
-systemctl daemon-reload && systemctl restart agent-lsp
+cargo build --release --manifest-path packages/agent-lsp-runtime-worker/Cargo.toml
+install -m 0755 packages/agent-lsp-runtime-worker/target/release/agent-lsp-runtime-worker \
+  /opt/agent-lsp/target/release/agent-lsp-runtime-worker
+install -m 0644 infra/deploy/systemd/agent-lsp-runtime-worker.service \
+  /etc/systemd/system/agent-lsp-runtime-worker.service
+systemctl daemon-reload
+systemctl restart agent-lsp
+systemctl enable --now agent-lsp-runtime-worker
 ```
 
 Client smoke (remote MCP):
@@ -46,6 +53,11 @@ curl -fsS -H "Authorization: Bearer $AGENT_LSP_BEARER_TOKEN" \
 | Mirrors | `AGENT_LSP_MIRRORS` + `AGENT_LSP_MIRRORS_TOML` — sync by hand |
 
 Local pyright/gopls is gated by `AGENT_LSP_ALLOW_LOCAL=1` (tests/dev only).
+
+**Runtime health worker** (`agent-lsp-runtime-worker.service`): polls
+`$AGENT_LSP_STATE/sessions.db` for `containers.status=running`, inspects Docker,
+and marks dead binds `stopped` + session `index_status=stale` (ADR-0007 / ADR-0012).
+HUB `ensure_container` / scout tools also call `DockerService.is_running` before reuse.
 
 Heavy trees (Ceph, CPython, …): sync mirrors by hand — see
 [`docs/guide/mirrors.md`](../../docs/guide/mirrors.md).

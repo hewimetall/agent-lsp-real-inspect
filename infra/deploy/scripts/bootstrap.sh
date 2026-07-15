@@ -80,6 +80,7 @@ AGENT_LSP_MIRRORS=${DATA_ROOT}/mirrors
 AGENT_LSP_MIRRORS_TOML=${INSTALL_ROOT}/infra/mirrors/mirrors.toml
 # Production: Docker-only LSP / deps (never enable AGENT_LSP_ALLOW_LOCAL here)
 AGENT_LSP_ALLOW_LOCAL=0
+AGENT_LSP_RUNTIME_WORKER_INTERVAL_SECS=15
 FASTMCP_TRANSPORT=http
 FASTMCP_HOST=127.0.0.1
 FASTMCP_PORT=8765
@@ -99,6 +100,21 @@ mkdir -p /etc/systemd/system/caddy.service.d
 install -m 0644 infra/deploy/systemd/caddy.service.d-override.conf \
   /etc/systemd/system/caddy.service.d/override.conf
 install -m 0644 infra/deploy/systemd/agent-lsp.service /etc/systemd/system/agent-lsp.service
+install -m 0644 infra/deploy/systemd/agent-lsp-runtime-worker.service \
+  /etc/systemd/system/agent-lsp-runtime-worker.service
+
+echo "==> build runtime health worker"
+cargo build --release -p agent-lsp-runtime-worker \
+  --manifest-path packages/agent-lsp-runtime-worker/Cargo.toml
+# Install next to release target expected by the unit (workspace-local target/)
+mkdir -p "$INSTALL_ROOT/target/release"
+install -m 0755 \
+  packages/agent-lsp-runtime-worker/target/release/agent-lsp-runtime-worker \
+  "$INSTALL_ROOT/target/release/agent-lsp-runtime-worker" \
+  2>/dev/null \
+  || install -m 0755 \
+    target/release/agent-lsp-runtime-worker \
+    "$INSTALL_ROOT/target/release/agent-lsp-runtime-worker"
 
 # Open HTTP/HTTPS if ufw is active (ACME + serve)
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi 'Status: active'; then
@@ -108,8 +124,10 @@ fi
 
 systemctl daemon-reload
 systemctl enable --now agent-lsp
+systemctl enable --now agent-lsp-runtime-worker
 systemctl enable --now caddy
 systemctl restart agent-lsp
+systemctl restart agent-lsp-runtime-worker
 systemctl restart caddy
 
 echo "==> waiting for local MCP"
