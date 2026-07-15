@@ -74,7 +74,8 @@ make cov
 
 ## LSP container images
 
-Four languages from `agent_lsp.runtimes`: **go / python / typescript / rust**.
+Languages from `agent_lsp.runtimes`: **go / python / typescript / rust / cpp**
+(clangd + `compile_commands.json` for C/C++).
 
 ```bash
 make docker-lsp
@@ -82,3 +83,9 @@ make docker-lsp
 ```
 
 See [`infra/docker/lsp/README.md`](infra/docker/lsp/README.md).
+
+## Runtime health
+
+Dead Docker LSP containers are demoted to `stale` by
+`agent-lsp-runtime-worker` (ADR-0012); the hub also checks `is_running`
+before reuse so scout tools do not hit `Broken pipe`.

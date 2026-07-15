@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "agent-lsp"
-version = "0.1.4"
+version = "0.1.5"
 description = "Scout LSP MCP — FastMCP + Rust/PyO3 (tasks, sessions, worktrees, blast_radius)"
 requires-python = ">=3.12"
 readme = "README.md"
