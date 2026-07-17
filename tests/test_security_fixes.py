@@ -479,6 +479,10 @@ def test_with_lsp_client_marks_stale_on_broken_pipe(
     assert hub.get("s-bp") is not None
     assert hub.get("s-bp").needs_recycle is True  # type: ignore[union-attr]
     assert hub.get("s-bp").client is None  # type: ignore[union-attr]
+    # Follow-up scout call must keep runtime_stale (not runtime_not_ready).
+    again = server._client_for("s-bp")
+    assert isinstance(again, dict)
+    assert again["error"] == "runtime_stale"
 
 
 def test_ensure_container_force_recycles_same_identity(

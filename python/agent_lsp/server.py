@@ -144,18 +144,26 @@ def _is_stale_transport_error(exc: BaseException) -> bool:
 
 def _client_for(session_id: str) -> Any | dict[str, Any]:
     rt = HUB.get(session_id)
-    if rt is None or rt.client is None:
+    if rt is None:
         return {
             "error": "runtime_not_ready",
             "session_id": session_id,
             "hint": "call ensure_runtime then warm_index",
         }
-    if rt.needs_recycle:
+    # After mark_runtime_stale, client is cleared but needs_recycle stays True —
+    # prefer runtime_stale so callers know to re-ensure, not cold-start onboard.
+    if rt.needs_recycle or rt.index_status == "stale":
         return _runtime_stale_payload(
             session_id,
             hint="runtime needs recycle — call ensure_runtime then warm_index",
             detail=rt.error or "",
         )
+    if rt.client is None:
+        return {
+            "error": "runtime_not_ready",
+            "session_id": session_id,
+            "hint": "call ensure_runtime then warm_index",
+        }
     if (
         rt.runtime_mode == "container"
         and rt.container_id
