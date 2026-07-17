@@ -345,6 +345,9 @@ def test_ensure_container_recycles_when_docker_not_running(
         def connect_tcp(cls, *a: object, **k: object) -> DummyClient:
             return cls()
 
+        def transport_alive(self) -> bool:
+            return True
+
         def shutdown(self) -> None:
             return None
 
@@ -375,6 +378,111 @@ def test_ensure_container_recycles_when_docker_not_running(
     assert len(started) == 2
     assert first.needs_recycle is True
     assert first.index_status == "stale"
+
+
+def test_ensure_container_recycles_when_tcp_dead_but_docker_up(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Prod Broken pipe: container Running, LSP socket already closed."""
+    hub = RuntimeHub()
+    started: list[str] = []
+    alive = {"value": True}
+
+    class FakeDocker:
+        def start_persistent(self, *a: object, **k: object) -> dict[str, object]:
+            started.append("x")
+            return {"container_id": f"cid-{len(started)}", "host_port": 43000 + len(started)}
+
+        def stop(self, cid: str) -> None:
+            return None
+
+        def remove(self, cid: str) -> None:
+            return None
+
+        def is_running(self, cid: str) -> bool:
+            return True
+
+    class DummyClient:
+        def __init__(self, *a: object, **k: object) -> None:
+            self._workspace_loaded = False
+
+        @classmethod
+        def connect_tcp(cls, *a: object, **k: object) -> DummyClient:
+            return cls()
+
+        def transport_alive(self) -> bool:
+            return bool(alive["value"])
+
+        def shutdown(self) -> None:
+            return None
+
+    monkeypatch.setattr("agent_lsp.runtime_hub.LspClient", DummyClient)
+    monkeypatch.setattr(
+        "agent_lsp.runtime_hub.get_runtime",
+        lambda language: type(
+            "R",
+            (),
+            {
+                "language": language,
+                "image": "img:1",
+                "cmd": ["true"],
+                "local_cmd": ["true"],
+                "container_workdir": "/workspace",
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "agent_lsp.runtime_hub.resolve_image", lambda *a, **k: "img:1"
+    )
+    docker = FakeDocker()
+    first = hub.ensure_container("s-pipe", tmp_path, "python", docker, image_override="img:1")
+    alive["value"] = False
+    second = hub.ensure_container("s-pipe", tmp_path, "python", docker, image_override="img:1")
+    assert second.container_id != first.container_id
+    assert len(started) == 2
+    assert first.needs_recycle is True
+    assert first.client is None
+    assert "TCP" in (first.error or "")
+
+
+def test_with_lsp_client_marks_stale_on_broken_pipe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agent_lsp import server
+
+    hub = RuntimeHub()
+    rt = SessionRuntime(
+        session_id="s-bp",
+        workspace_path=Path("/tmp"),
+        language="python",
+        runtime_mode="container",
+        container_id="cid-1",
+        client=object(),  # type: ignore[arg-type]
+        index_status="ready",
+    )
+    hub.put(rt)
+    monkeypatch.setattr(server, "HUB", hub)
+    monkeypatch.setattr(server, "get_docker", lambda: None)
+
+    class DeadClient:
+        def transport_alive(self) -> bool:
+            return True  # pass _client_for probe; fail on call
+
+        def hover(self, *a: object, **k: object) -> str:
+            raise BrokenPipeError(32, "Broken pipe")
+
+    rt.client = DeadClient()  # type: ignore[assignment]
+
+    out = server._with_lsp_client("s-bp", lambda c: c.hover("a.py", 1, 1))
+    assert isinstance(out, dict)
+    assert out["error"] == "runtime_stale"
+    assert hub.get("s-bp") is not None
+    assert hub.get("s-bp").needs_recycle is True  # type: ignore[union-attr]
+    assert hub.get("s-bp").client is None  # type: ignore[union-attr]
+    # Follow-up scout call must keep runtime_stale (not runtime_not_ready).
+    again = server._client_for("s-bp")
+    assert isinstance(again, dict)
+    assert again["error"] == "runtime_stale"
 
 
 def test_ensure_container_force_recycles_same_identity(
