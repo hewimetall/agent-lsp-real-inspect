@@ -106,6 +106,42 @@ def _active_workspace(session_id: str) -> tuple[dict[str, Any], dict[str, Any]] 
     return session, cast(dict[str, Any], dict(ws))
 
 
+def _runtime_stale_payload(session_id: str, *, hint: str, detail: str = "") -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "error": "runtime_stale",
+        "session_id": session_id,
+        "hint": hint,
+    }
+    if detail:
+        out["detail"] = detail
+    return out
+
+
+def _is_stale_transport_error(exc: BaseException) -> bool:
+    if isinstance(exc, (BrokenPipeError, ConnectionError, ConnectionResetError)):
+        return True
+    if isinstance(exc, OSError) and getattr(exc, "errno", None) in {
+        32,  # EPIPE
+        104,  # ECONNRESET
+    }:
+        return True
+    from agent_lsp.lsp_client import LspError
+
+    if isinstance(exc, LspError):
+        msg = str(exc).lower()
+        return any(
+            token in msg
+            for token in (
+                "broken pipe",
+                "tcp closed",
+                "stdout closed",
+                "connection reset",
+                "connection refused",
+            )
+        )
+    return False
+
+
 def _client_for(session_id: str) -> Any | dict[str, Any]:
     rt = HUB.get(session_id)
     if rt is None or rt.client is None:
@@ -114,32 +150,61 @@ def _client_for(session_id: str) -> Any | dict[str, Any]:
             "session_id": session_id,
             "hint": "call ensure_runtime then warm_index",
         }
+    if rt.needs_recycle:
+        return _runtime_stale_payload(
+            session_id,
+            hint="runtime needs recycle — call ensure_runtime then warm_index",
+            detail=rt.error or "",
+        )
     if (
         rt.runtime_mode == "container"
         and rt.container_id
-        and not rt.needs_recycle
     ):
         docker = get_docker()
         if docker is not None and hasattr(docker, "is_running"):
             try:
                 if not docker.is_running(rt.container_id):
-                    HUB._mark_dead_container(
-                        rt, reason="docker reports container not running"
+                    HUB.mark_runtime_stale(
+                        session_id,
+                        reason="docker reports container not running",
                     )
-                    return {
-                        "error": "runtime_stale",
-                        "session_id": session_id,
-                        "hint": "container died — call ensure_runtime then warm_index",
-                    }
+                    return _runtime_stale_payload(
+                        session_id,
+                        hint="container died — call ensure_runtime then warm_index",
+                    )
             except Exception:
                 pass
-    if rt.needs_recycle:
-        return {
-            "error": "runtime_stale",
-            "session_id": session_id,
-            "hint": "runtime needs recycle — call ensure_runtime then warm_index",
-        }
+    # Container Up ≠ LSP socket alive (prod Broken pipe).
+    if not HUB._client_transport_alive(rt):
+        HUB.mark_runtime_stale(
+            session_id,
+            reason="LSP TCP transport dead (Broken pipe / peer closed)",
+        )
+        return _runtime_stale_payload(
+            session_id,
+            hint="LSP connection lost — call ensure_runtime then warm_index",
+        )
     return rt.client
+
+
+def _with_lsp_client(
+    session_id: str, fn: Any
+) -> Any:
+    """Run ``fn(client)``; on Broken pipe mark runtime stale instead of 500."""
+    client = _client_for(session_id)
+    if isinstance(client, dict):
+        return client
+    try:
+        return fn(client)
+    except Exception as exc:
+        if not _is_stale_transport_error(exc):
+            raise
+        HUB.mark_runtime_stale(session_id, reason=f"LSP transport failed: {exc}")
+        return _runtime_stale_payload(
+            session_id,
+            hint="LSP connection lost — call ensure_runtime then warm_index",
+            detail=str(exc),
+        )
 
 
 def _task_row(row: object) -> dict[str, Any]:
@@ -619,30 +684,37 @@ def blast_radius_tool(
     include_transitive: bool = False,
 ) -> dict[str, Any]:
     """Signature blast-radius analysis on the warm session index."""
-    client = _client_for(session_id)
-    if isinstance(client, dict):
-        return client
-    result = blast_radius(
-        client, changed_files, include_transitive=include_transitive
-    )
-    return blast_to_dict(result)
+
+    def _run(client: Any) -> dict[str, Any]:
+        result = blast_radius(
+            client, changed_files, include_transitive=include_transitive
+        )
+        return blast_to_dict(result)
+
+    return _with_lsp_client(session_id, _run)
 
 
 @mcp.tool()
 def list_symbols(session_id: str, file_path: str) -> dict[str, Any]:
     """List symbols in a file (documentSymbol)."""
-    client = _client_for(session_id)
-    if isinstance(client, dict):
-        return client
-    syms = client.document_symbols(file_path)
-    return {
-        "file_path": file_path,
-        "symbols": [
-            {"name": s.name, "kind": s.kind, "line": s.line, "character": s.character}
-            for s in syms
-        ],
-        "indexed": client.is_workspace_loaded(),
-    }
+
+    def _run(client: Any) -> dict[str, Any]:
+        syms = client.document_symbols(file_path)
+        return {
+            "file_path": file_path,
+            "symbols": [
+                {
+                    "name": s.name,
+                    "kind": s.kind,
+                    "line": s.line,
+                    "character": s.character,
+                }
+                for s in syms
+            ],
+            "indexed": client.is_workspace_loaded(),
+        }
+
+    return _with_lsp_client(session_id, _run)
 
 
 @mcp.tool()
@@ -654,16 +726,18 @@ def find_references(
     include_declaration: bool = False,
 ) -> dict[str, Any]:
     """Find all references to the symbol at position (1-based line/column)."""
-    client = _client_for(session_id)
-    if isinstance(client, dict):
-        return client
-    locs = client.references(file_path, line, column, include_declaration)
-    return {
-        "references": [
-            {"uri": loc.uri, "line": loc.line, "character": loc.character} for loc in locs
-        ],
-        "indexed": client.is_workspace_loaded(),
-    }
+
+    def _run(client: Any) -> dict[str, Any]:
+        locs = client.references(file_path, line, column, include_declaration)
+        return {
+            "references": [
+                {"uri": loc.uri, "line": loc.line, "character": loc.character}
+                for loc in locs
+            ],
+            "indexed": client.is_workspace_loaded(),
+        }
+
+    return _with_lsp_client(session_id, _run)
 
 
 @mcp.tool()
@@ -671,11 +745,12 @@ def inspect_symbol(
     session_id: str, file_path: str, line: int, column: int
 ) -> dict[str, Any]:
     """Hover / type info at position."""
-    client = _client_for(session_id)
-    if isinstance(client, dict):
-        return client
-    text = client.hover(file_path, line, column)
-    return {"hover": text, "indexed": client.is_workspace_loaded()}
+
+    def _run(client: Any) -> dict[str, Any]:
+        text = client.hover(file_path, line, column)
+        return {"hover": text, "indexed": client.is_workspace_loaded()}
+
+    return _with_lsp_client(session_id, _run)
 
 
 @mcp.tool()
@@ -683,16 +758,18 @@ def go_to_definition(
     session_id: str, file_path: str, line: int, column: int
 ) -> dict[str, Any]:
     """Go to definition at position."""
-    client = _client_for(session_id)
-    if isinstance(client, dict):
-        return client
-    locs = client.definition(file_path, line, column)
-    return {
-        "definitions": [
-            {"uri": loc.uri, "line": loc.line, "character": loc.character} for loc in locs
-        ],
-        "indexed": client.is_workspace_loaded(),
-    }
+
+    def _run(client: Any) -> dict[str, Any]:
+        locs = client.definition(file_path, line, column)
+        return {
+            "definitions": [
+                {"uri": loc.uri, "line": loc.line, "character": loc.character}
+                for loc in locs
+            ],
+            "indexed": client.is_workspace_loaded(),
+        }
+
+    return _with_lsp_client(session_id, _run)
 
 
 @mcp.tool()
@@ -700,22 +777,23 @@ def explore_symbol(
     session_id: str, file_path: str, line: int, column: int
 ) -> dict[str, Any]:
     """Scout composite: hover + definition + references in one call."""
-    client = _client_for(session_id)
-    if isinstance(client, dict):
-        return client
-    hover = client.hover(file_path, line, column)
-    defs = client.definition(file_path, line, column)
-    refs = client.references(file_path, line, column)
-    return {
-        "hover": hover,
-        "definitions": [
-            {"uri": d.uri, "line": d.line, "character": d.character} for d in defs
-        ],
-        "references": [
-            {"uri": r.uri, "line": r.line, "character": r.character} for r in refs
-        ],
-        "indexed": client.is_workspace_loaded(),
-    }
+
+    def _run(client: Any) -> dict[str, Any]:
+        hover = client.hover(file_path, line, column)
+        defs = client.definition(file_path, line, column)
+        refs = client.references(file_path, line, column)
+        return {
+            "hover": hover,
+            "definitions": [
+                {"uri": d.uri, "line": d.line, "character": d.character} for d in defs
+            ],
+            "references": [
+                {"uri": r.uri, "line": r.line, "character": r.character} for r in refs
+            ],
+            "indexed": client.is_workspace_loaded(),
+        }
+
+    return _with_lsp_client(session_id, _run)
 
 
 def main() -> None:

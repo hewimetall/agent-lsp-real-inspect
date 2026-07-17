@@ -227,10 +227,16 @@ class RuntimeHub:
             and (existing.language_version or "") == (language_version or "")
             and (existing.image or "") == image
         ):
-            # Ready in memory ≠ Docker alive (OOM / manual stop / daemon restart).
-            if self._container_still_running(existing, docker):
+            # Ready in memory ≠ Docker alive, and Docker Up ≠ LSP TCP still open.
+            docker_up = self._container_still_running(existing, docker)
+            tcp_up = self._client_transport_alive(existing)
+            if docker_up and tcp_up:
                 return existing
-            self._mark_dead_container(existing, reason="docker reports container not running")
+            if not tcp_up:
+                reason = "LSP TCP transport dead (Broken pipe / peer closed)"
+            else:
+                reason = "docker reports container not running"
+            self._mark_dead_container(existing, reason=reason)
 
         # Start the replacement first (unique name). Only tear down the previous
         # runtime after the new LSP is reachable — never leave the session cold.
@@ -319,12 +325,39 @@ class RuntimeHub:
             # Fail open on inspect errors — worker + next ensure will reconcile.
             return True
 
+    @staticmethod
+    def _client_transport_alive(rt: SessionRuntime) -> bool:
+        client = rt.client
+        if client is None:
+            return False
+        probe = getattr(client, "transport_alive", None)
+        if callable(probe):
+            try:
+                return bool(probe())
+            except Exception:
+                return False
+        return True
+
+    def mark_runtime_stale(self, session_id: str, *, reason: str) -> SessionRuntime | None:
+        """Invalidate an in-memory runtime after Broken pipe / dead transport."""
+        rt = self.get(session_id)
+        if rt is None:
+            return None
+        self._mark_dead_container(rt, reason=reason)
+        return rt
+
     def _mark_dead_container(self, rt: SessionRuntime, *, reason: str) -> None:
         rt.needs_recycle = True
         rt.index_status = "stale"
         rt.error = reason
+        # Drop the dead client handle so we never write to a half-open socket again.
+        client = rt.client
+        rt.client = None
         with self._lock:
             self.sessions[rt.session_id] = rt
+        if client is not None:
+            with suppress(Exception):
+                client.shutdown()
         try:
             from agent_lsp.server import get_state
 

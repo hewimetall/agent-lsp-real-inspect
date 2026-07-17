@@ -149,6 +149,30 @@ class TcpTransport(_Transport):
         self._rfile = self.sock.makefile("rb")
         self._lock = threading.Lock()
 
+    def is_alive(self) -> bool:
+        """Best-effort: False when the peer closed or the socket is in error.
+
+        Docker can still report the container as Running while clangd/the bridge
+        has dropped the TCP session — that is the Broken-pipe production failure.
+        """
+        try:
+            err = self.sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+            if err:
+                return False
+            # Non-blocking peek: b"" means orderly shutdown by peer.
+            self.sock.settimeout(0)
+            try:
+                chunk = self.sock.recv(1, socket.MSG_PEEK)
+            except BlockingIOError:
+                return True
+            except ConnectionError:
+                return False
+            finally:
+                self.sock.settimeout(None)
+            return chunk != b""
+        except OSError:
+            return False
+
     def write_message(self, msg: dict[str, Any]) -> None:
         body = json.dumps(msg).encode("utf-8")
         header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
@@ -335,6 +359,15 @@ class LspClient:
     def apply_settings(self, settings: dict[str, Any]) -> None:
         self.settings = dict(settings)
         self.notify("workspace/didChangeConfiguration", {"settings": self.settings})
+
+    def transport_alive(self) -> bool:
+        """Whether the underlying stdio/TCP transport still looks usable."""
+        t = self.transport
+        if isinstance(t, TcpTransport):
+            return t.is_alive()
+        if isinstance(t, StdioTransport):
+            return t.proc.poll() is None
+        return True
 
     def request(self, method: str, params: dict[str, Any] | None = None, timeout: float = 60.0) -> Any:
         # rust-analyzer (and others) may reply -32801 ContentModified while the

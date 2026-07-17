@@ -38,3 +38,12 @@ updates without PyO3.
   `ensure_runtime` + `warm_index` after `stale`.
 - Worker needs Docker socket + write access to `sessions.db` (same as MCP).
 - Coverage: crate is part of the Rust median gate (ADR-0008).
+
+## Amendment (Broken pipe / half-open TCP)
+
+Docker `Running` is necessary but not sufficient: the stdio↔TCP bridge or
+clangd can drop the socket while the container stays Up. Hub reuse and scout
+tools must also probe `LspClient.transport_alive()` and convert
+`BrokenPipeError` / `ConnectionError` / `LspError(…closed…)` into
+`runtime_stale` + `needs_recycle` so the next `ensure_runtime` recreates the
+LSP instead of returning a dead in-memory client.
