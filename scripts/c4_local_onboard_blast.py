@@ -180,37 +180,46 @@ async def main() -> int:
 
         for t in TARGETS:
             line = _find_line(worktree, t["path"], t["symbol_hint"])
-            try:
-                br = await _call(
-                    client,
-                    "blast_radius",
-                    {
-                        "session_id": sid,
-                        "path": t["path"],
-                        "line": line,
-                        "column": 1,
-                    },
-                )
-                report["blasts"].append({"target": t, "line": line, "result": br})
-                print(f"blast {t['id']}@{line} ok", flush=True)
-            except Exception as exc:  # noqa: BLE001
-                report["blasts"].append({"target": t, "line": line, "error": str(exc)})
-                print(f"blast {t['id']} ERR {exc}", flush=True)
+        try:
+            br = await _call(
+                client,
+                "blast_radius",
+                {
+                    "session_id": sid,
+                    "changed_files": [t["path"] for t in TARGETS],
+                    "include_transitive": True,
+                },
+            )
+            report["blasts"] = br
+            print("blast_radius ok", flush=True)
+        except Exception as exc:  # noqa: BLE001
+            report["blasts"] = {"error": str(exc)}
+            print(f"blast_radius ERR {exc}", flush=True)
 
+        for t in TARGETS:
+            line = _find_line(worktree, t["path"], t["symbol_hint"])
+            text = (worktree / t["path"]).read_text(encoding="utf-8").splitlines()[
+                line - 1
+            ]
+            col = max(1, text.find(t["symbol_hint"].split()[-1]) + 1)
             try:
                 ex = await _call(
                     client,
                     "explore_symbol",
                     {
                         "session_id": sid,
-                        "path": t["path"],
+                        "file_path": t["path"],
                         "line": line,
-                        "column": 1,
+                        "column": col,
                     },
                 )
-                report["explores"].append({"target": t, "line": line, "result": ex})
+                report["explores"].append(
+                    {"target": t, "line": line, "column": col, "result": ex}
+                )
+                print(f"explore {t['id']}@{line}:{col} ok", flush=True)
             except Exception as exc:  # noqa: BLE001
                 report["explores"].append({"target": t, "line": line, "error": str(exc)})
+                print(f"explore {t['id']} ERR {exc}", flush=True)
 
         report["ok"] = True
         report["worktree"] = str(worktree)
