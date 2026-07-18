@@ -3,6 +3,7 @@
 | Path | Content |
 |------|---------|
 | [architecture/OVERVIEW.md](architecture/OVERVIEW.md) | Stack + task pipeline |
+| [architecture/c4.md](architecture/c4.md) | **C4** Context / Container / Component |
 | [adr/](adr/README.md) | **ADL** — Architecture Decision Log (ADR index) |
 | [guide/tasks.md](guide/tasks.md) | How to call task-required tools + MCP prompts |
 | [guide/coverage.md](guide/coverage.md) | Median coverage gates |
