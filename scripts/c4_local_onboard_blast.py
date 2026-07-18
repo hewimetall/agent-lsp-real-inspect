@@ -178,8 +178,6 @@ async def main() -> int:
 
         assert worktree is not None and worktree.is_dir(), worktree
 
-        for t in TARGETS:
-            line = _find_line(worktree, t["path"], t["symbol_hint"])
         try:
             br = await _call(
                 client,
