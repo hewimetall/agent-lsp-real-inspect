@@ -13,6 +13,7 @@
 | [guide/runbook-solo.md](guide/runbook-solo.md) | Raise agent-lsp alone (step-by-step) |
 | [guide/runbook-with-vmcp.md](guide/runbook-with-vmcp.md) | Raise agent-lsp **with** vmcp gateway |
 | [guide/mirrors.md](guide/mirrors.md) | Local git mirrors (TOML + manual sync) |
+| [guide/pypi-release.md](guide/pypi-release.md) | **PyPI by tag** — `uvx agent-lsp-real-inspect-mcp` |
 | [../infra/requests/](../infra/requests/README.md) | Important chat request templates (not MCP `/prompts`) |
 
 Examples: [`infra/vmcp/`](../infra/vmcp/) — registry + sidecar for vmcp.

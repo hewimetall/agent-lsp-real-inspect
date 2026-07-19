@@ -1,0 +1,176 @@
+# Publish Rust/PyO3 wheels to PyPI on version tags (v*).
+#
+# PyPI trusted publishers (pending or active) must match:
+#   Owner: hewimetall
+#   Repository: agent-lsp-real-inspect
+#   Workflow: release.yml
+#   Environment: pypi
+#
+# Projects (one Trusted Publisher each):
+#   - agent-lsp-state
+#   - agent-lsp-git
+#   - agent-lsp-docker
+#   - agent-lsp-real-inspect-mcp   ← main; ``uvx agent-lsp-real-inspect-mcp``
+#
+# ``agent-lsp`` on PyPI is the upstream Go package — do not reuse that name.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }} / ${{ matrix.package.artifact }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        package:
+          - workdir: packages/agent-lsp-state
+            artifact: agent-lsp-state
+          - workdir: packages/agent-lsp-git
+            artifact: agent-lsp-git
+          - workdir: packages/agent-lsp-docker
+            artifact: agent-lsp-docker
+          - workdir: .
+            artifact: agent-lsp-real-inspect-mcp
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stamp versions from tag
+        shell: bash
+        run: |
+          chmod +x scripts/release-set-version.sh
+          ./scripts/release-set-version.sh "${GITHUB_REF_NAME}"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build wheels (maturin)
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: ${{ matrix.package.workdir }}
+          command: build
+          args: --release -o dist --interpreter 3.12
+          sccache: "true"
+          manylinux: ${{ matrix.os == 'ubuntu-latest' && 'auto' || 'off' }}
+
+      - name: Build sdist (ubuntu only)
+        if: matrix.os == 'ubuntu-latest'
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: ${{ matrix.package.workdir }}
+          command: sdist
+          args: -o dist
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.package.artifact }}-${{ matrix.os }}
+          path: ${{ matrix.package.workdir }}/dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/agent-lsp-real-inspect-mcp/
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stamp versions (for local metadata)
+        run: |
+          chmod +x scripts/release-set-version.sh
+          ./scripts/release-set-version.sh "${GITHUB_REF_NAME}"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+
+      - name: Show dist
+        run: find dist -type f | sort
+
+      - name: Smoke test (linux wheels)
+        shell: bash
+        run: |
+          set -euo pipefail
+          state=$(ls dist/agent_lsp_state-*.whl | head -1)
+          gitw=$(ls dist/agent_lsp_git-*.whl | head -1)
+          dock=$(ls dist/agent_lsp_docker-*.whl | head -1)
+          core=$(ls dist/agent_lsp_real_inspect_mcp-*.whl | head -1)
+          uv run --isolated --no-project \
+            --with "$state" --with "$gitw" --with "$dock" --with "$core" \
+            tests/smoke_pypi.py
+
+      - name: Publish to PyPI (Trusted Publisher)
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          uv publish dist/agent_lsp_state-*
+          uv publish dist/agent_lsp_git-*
+          uv publish dist/agent_lsp_docker-*
+          uv publish dist/agent_lsp_real_inspect_mcp-*
+
+      - name: Create / update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --title "$tag" \
+              --generate-notes \
+              --verify-tag
+          fi
+          gh release upload "$tag" dist/* --clobber
+
+      - name: Print install hint
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          cat <<EOF
+          Published ${GITHUB_REF_NAME} to PyPI.
+
+            uvx agent-lsp-real-inspect-mcp
+            uvx agent-lsp-real-inspect-mcp==${ver}
+            uv tool install agent-lsp-real-inspect-mcp==${ver}
+            agent-lsp
+
+          EOF

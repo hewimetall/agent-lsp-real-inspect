@@ -4,10 +4,11 @@ build-backend = "maturin"
 
 [project]
 name = "agent-lsp-state"
-version = "0.1.0"
+version = "0.1.5"
 description = "Persistent sessions, workspaces, and container bindings (Rust PyO3 + SQLite)"
 requires-python = ">=3.12"
 readme = "README.md"
+license = "MIT"
 dependencies = []
 
 [project.optional-dependencies]
