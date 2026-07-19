@@ -110,7 +110,7 @@ class ScoutWorker:
     def _import_project(self, tid: str, task: dict[str, Any]) -> None:
         from agent_lsp.mirrors import resolve_source
         from agent_lsp.paths import project_bare_path
-        from agent_lsp_git import GitService
+        from agent_lsp._tasks import GitService
 
         payload = self._payload(task)
         project_id = str(payload.get("project_id") or "")

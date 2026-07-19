@@ -44,7 +44,7 @@ _SCOUT_TASK = TaskConfig(mode="optional", poll_interval=timedelta(seconds=1))
 def get_state() -> Any:
     global _state
     if _state is None:
-        from agent_lsp_state import StateStore
+        from agent_lsp._tasks import StateStore
 
         ensure_data_dirs()
         _state = StateStore(str(paths_mod.STATE_DIR / "sessions.db"))
@@ -54,7 +54,7 @@ def get_state() -> Any:
 def get_git() -> Any:
     global _git
     if _git is None:
-        from agent_lsp_git import GitService
+        from agent_lsp._tasks import GitService
 
         _git = GitService()
     return _git
@@ -77,7 +77,7 @@ def get_docker() -> Any | None:
     if _docker_error is not None:
         return None
     try:
-        from agent_lsp_docker import DockerService
+        from agent_lsp._tasks import DockerService
 
         _docker = DockerService()
         return _docker

@@ -48,12 +48,8 @@ agent-lsp = "agent_lsp.server:main"
 features = ["extension-module"]
 python-source = "python"
 module-name = "agent_lsp._tasks"
-# Include internal Rust crates in the sdist so path deps resolve on build.
-include = [
-    "packages/agent-lsp-state/**/*",
-    "packages/agent-lsp-git/**/*",
-    "packages/agent-lsp-docker/**/*",
-]
+# Path-deps under packages/ are pulled into the sdist by maturin automatically.
+# Do NOT glob-include packages/** — that pulls target/ junk into the wheel.
 
 [tool.uv]
 package = true
@@ -68,7 +64,7 @@ extend-exclude = ["target", ".venv", "packages"]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["agent_lsp", "agent_lsp_state", "agent_lsp_git", "agent_lsp_docker"]
+known-first-party = ["agent_lsp"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -76,7 +72,7 @@ quote-style = "double"
 [tool.mypy]
 python_version = "3.12"
 mypy_path = "python"
-packages = ["agent_lsp", "agent_lsp_state", "agent_lsp_git", "agent_lsp_docker"]
+packages = ["agent_lsp"]
 strict = true
 warn_return_any = true
 warn_unused_configs = true
@@ -86,9 +82,6 @@ check_untyped_defs = true
 [[tool.mypy.overrides]]
 module = [
     "agent_lsp._tasks",
-    "agent_lsp_state._native",
-    "agent_lsp_git._native",
-    "agent_lsp_docker._native",
     "fastmcp.*",
 ]
 ignore_missing_imports = true
@@ -102,7 +95,7 @@ pythonpath = ["python"]
 
 [tool.coverage.run]
 branch = false
-source = ["agent_lsp", "agent_lsp_state", "agent_lsp_git", "agent_lsp_docker"]
+source = ["agent_lsp"]
 omit = ["*/tests/*"]
 
 [tool.coverage.report]
