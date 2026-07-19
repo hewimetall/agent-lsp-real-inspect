@@ -67,7 +67,8 @@ def set_project_version(path: pathlib.Path, *, rename: str | None = None, pin_si
                 1,
             )
     path.write_text(text2, encoding="utf-8")
-    print(f"OK {path} → {version}" + (f" name={rename}" if rename else ""))
+    # ASCII-only: Windows runners default to cp1252 and choke on "→".
+    print(f"OK {path} -> {version}" + (f" name={rename}" if rename else ""))
 
 set_project_version(root / "pyproject.toml", rename=pypi_name, pin_siblings=True)
 for rel in (
