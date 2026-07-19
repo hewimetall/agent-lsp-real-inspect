@@ -804,9 +804,43 @@ def explore_symbol(
     return _with_lsp_client(session_id, _run)
 
 
-def main() -> None:
-    ensure_data_dirs()
-    mcp.run()
+_CLI_USAGE = """\
+usage: agent-lsp [-h] [-V]
+
+Scout LSP MCP server (FastMCP + Rust/PyO3).
+
+With no arguments, starts the MCP server on stdio.
+
+options:
+  -h, --help     show this help message and exit
+  -V, --version  print package version and exit
+
+Entrypoints: agent-lsp, agent-lsp-real-inspect-mcp (release wheels).
+"""
+
+
+def main(argv: list[str] | None = None) -> None:
+    """CLI entrypoint: ``--help`` / ``--version``, otherwise start MCP stdio."""
+    import sys
+
+    from agent_lsp._version import __version__
+
+    args = list(sys.argv[1:] if argv is None else argv)
+    if not args:
+        ensure_data_dirs()
+        mcp.run()
+        return
+
+    if args[0] in ("-h", "--help") and len(args) == 1:
+        print(_CLI_USAGE, end="")
+        raise SystemExit(0)
+    if args[0] in ("-V", "--version") and len(args) == 1:
+        print(__version__)
+        raise SystemExit(0)
+
+    print(f"error: unexpected arguments: {' '.join(args)}", file=sys.stderr)
+    print(_CLI_USAGE, end="", file=sys.stderr)
+    raise SystemExit(2)
 
 
 if __name__ == "__main__":

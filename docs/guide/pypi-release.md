@@ -6,19 +6,17 @@ Publish manylinux / macOS / Windows wheels on every `v*` tag via
 ## Install / run with uv
 
 ```bash
+uvx agent-lsp-real-inspect-mcp --help
+uvx agent-lsp-real-inspect-mcp --version
+# no args → MCP stdio server
 uvx agent-lsp-real-inspect-mcp
-# or pin a version
-uvx agent-lsp-real-inspect-mcp==0.1.6
 # or install as a tool
 uv tool install agent-lsp-real-inspect-mcp
-agent-lsp   # same entrypoint (starts MCP stdio server)
+agent-lsp --help   # same entrypoint
 ```
 
 > PyPI name is **`agent-lsp-real-inspect-mcp`**. Upstream already owns
 > [`agent-lsp`](https://pypi.org/project/agent-lsp/) (Go monolith).
-
-> Note: `--help` currently starts the MCP server (FastMCP), it does **not**
-> print a CLI usage banner. Prefer import/smoke checks for release verification.
 
 ## Cut a release
 
@@ -128,4 +126,5 @@ Do **not** ship only the main package: it depends on the three siblings.
 - [ ] Tag annotated: `git tag -a vX.Y.Z -m "…"` + `git push origin vX.Y.Z`
 - [ ] Watch Actions → Release: build green → smoke manylinux → `uv publish` all four → Release assets
 - [ ] Confirm: `curl -sI https://pypi.org/pypi/<each-of-four>/json` → 200
-- [ ] Confirm: `uvx agent-lsp-real-inspect-mcp` starts MCP (stdio); entrypoints `agent-lsp` + `agent-lsp-real-inspect-mcp`
+- [ ] Confirm: `uvx agent-lsp-real-inspect-mcp --help` prints usage (does not hang on stdio)
+- [ ] Confirm: `uvx agent-lsp-real-inspect-mcp --version` prints the stamped version

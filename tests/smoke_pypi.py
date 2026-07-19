@@ -13,15 +13,17 @@ def main() -> None:
     from agent_lsp.server import main as server_main
 
     assert callable(server_main)
+    ver = getattr(agent_lsp, "__version__", None)
+    assert isinstance(ver, str) and ver and ver not in {"?", "0.0.0+unknown"}, ver
     # Native TaskStore extension must load from the wheel.
     from agent_lsp._tasks import TaskStore
 
     assert TaskStore is not None
-    import agent_lsp_state  # noqa: F401
-    import agent_lsp_git  # noqa: F401
     import agent_lsp_docker  # noqa: F401
+    import agent_lsp_git  # noqa: F401
+    import agent_lsp_state  # noqa: F401
 
-    print(f"smoke_ok agent_lsp={getattr(agent_lsp, '__version__', '?')}")
+    print(f"smoke_ok agent_lsp={ver}")
 
 
 if __name__ == "__main__":
