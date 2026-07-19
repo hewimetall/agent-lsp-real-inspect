@@ -4,10 +4,11 @@ build-backend = "maturin"
 
 [project]
 name = "agent-lsp-docker"
-version = "0.1.0"
+version = "0.1.5"
 description = "ContainerRuntime via bollard — long-lived session containers, no docker CLI"
 requires-python = ">=3.12"
 readme = "README.md"
+license = "MIT"
 dependencies = []
 
 [project.optional-dependencies]

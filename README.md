@@ -51,6 +51,21 @@ create_session
 ./scripts/verify_runbook.sh with-vmcp   # + checks vmcp source / optional :8765 health
 ```
 
+## Install (PyPI / uv)
+
+Published on tags `v*` as **`agent-lsp-real-inspect-mcp`**
+(upstream already owns the PyPI name `agent-lsp`).
+
+```bash
+uvx agent-lsp-real-inspect-mcp
+# or
+uv tool install agent-lsp-real-inspect-mcp
+agent-lsp
+```
+
+Cut a release: `git tag -a v0.1.6 -m v0.1.6 && git push origin v0.1.6`  
+Setup (Trusted Publisher + env `pypi`): [`docs/guide/pypi-release.md`](docs/guide/pypi-release.md).
+
 ## Coverage
 
 Python ≠ Rust. Gate = **медиана ≥ 93%** (не среднее).

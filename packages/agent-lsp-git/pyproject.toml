@@ -4,10 +4,11 @@ build-backend = "maturin"
 
 [project]
 name = "agent-lsp-git"
-version = "0.1.0"
+version = "0.1.5"
 description = "GitPort + gix (bare, worktree, commit, clone; no git CLI)"
 requires-python = ">=3.12"
 readme = "README.md"
+license = "MIT"
 dependencies = []
 
 [project.optional-dependencies]

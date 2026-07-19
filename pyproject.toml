@@ -8,6 +8,17 @@ version = "0.1.5"
 description = "Scout LSP MCP — FastMCP + Rust/PyO3 (tasks, sessions, worktrees, blast_radius)"
 requires-python = ">=3.12"
 readme = "README.md"
+license = "MIT"
+authors = [{ name = "hewimetall" }]
+keywords = ["mcp", "lsp", "fastmcp", "scout", "agent"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Topic :: Software Development :: Libraries",
+]
 dependencies = [
     "fastmcp[tasks]>=2.0",
     "pydantic>=2.12",
@@ -15,6 +26,12 @@ dependencies = [
     "agent-lsp-git",
     "agent-lsp-docker",
 ]
+
+[project.urls]
+Homepage = "https://github.com/hewimetall/agent-lsp-real-inspect"
+Repository = "https://github.com/hewimetall/agent-lsp-real-inspect"
+Issues = "https://github.com/hewimetall/agent-lsp-real-inspect/issues"
+Documentation = "https://github.com/hewimetall/agent-lsp-real-inspect/tree/main/docs"
 
 [project.optional-dependencies]
 dev = [
@@ -27,6 +44,8 @@ dev = [
 
 [project.scripts]
 agent-lsp = "agent_lsp.server:main"
+# On tag release, scripts/release-set-version.sh renames the dist to
+# agent-lsp-real-inspect-mcp and adds a matching console script for uvx.
 
 [tool.maturin]
 features = ["extension-module"]
