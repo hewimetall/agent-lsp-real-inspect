@@ -78,6 +78,9 @@ jobs:
 
       - name: Stamp versions from tag
         shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: "1"
         run: |
           chmod +x scripts/release-set-version.sh
           ./scripts/release-set-version.sh "${GITHUB_REF_NAME}"
@@ -95,24 +98,19 @@ jobs:
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      # Build wheels; on linux also emit sdist in the same invocation so we do not
+      # re-enter maturin with a leftover RUSTC_WRAPPER=sccache from manylinux.
       - name: Build wheels (maturin)
         uses: PyO3/maturin-action@v1
         with:
           working-directory: ${{ matrix.package.workdir }}
           target: ${{ matrix.platform.target }}
           command: build
-          args: --release -o dist --interpreter 3.12
+          args: >-
+            --release -o dist --interpreter 3.12
+            ${{ matrix.platform.tag == 'linux-x86_64' && '--sdist' || '' }}
           sccache: "true"
           manylinux: ${{ matrix.platform.manylinux }}
-          rust-toolchain: stable
-
-      - name: Build sdist (linux x86_64 only)
-        if: matrix.platform.tag == 'linux-x86_64'
-        uses: PyO3/maturin-action@v1
-        with:
-          working-directory: ${{ matrix.package.workdir }}
-          command: sdist
-          args: -o dist
           rust-toolchain: stable
 
       - name: Upload dist

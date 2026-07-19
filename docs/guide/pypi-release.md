@@ -68,3 +68,10 @@ For **each** project below, PyPI → Publishing → **Add a new pending publishe
 Publisher provider: **GitHub**.
 
 The first successful tag push creates the PyPI projects automatically.
+
+## CI failure notes (v0.1.6)
+
+| Platform | Symptom | Fix |
+|----------|---------|-----|
+| Windows | `UnicodeEncodeError` on `→` in stamp script | ASCII `->` + `PYTHONUTF8=1` |
+| Linux | separate `maturin sdist` step: `sccache … No such file` | build sdist via `--sdist` in the same wheel step |
