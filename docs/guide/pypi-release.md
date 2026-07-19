@@ -29,10 +29,18 @@ The workflow:
 
 1. Stamps all package versions from the tag (`scripts/release-set-version.sh`)
 2. Renames the main dist to `agent-lsp-real-inspect-mcp` and pins sibling deps
-3. Builds wheels (maturin) on Ubuntu / macOS / Windows + sdists on Ubuntu
+3. Builds wheels (maturin) for:
+   - Linux x86_64 (`ubuntu-latest`, manylinux)
+   - macOS **x86_64** (`macos-15-intel`)
+   - macOS **aarch64** (`macos-latest`)
+   - Windows x64 (`windows-latest`)
+   - plus sdists on Linux
 4. Smoke-imports the linux wheels
 5. Publishes with **Trusted Publishing** (`uv publish`, env `pypi`)
 6. Attaches artifacts to the GitHub Release
+
+macOS runners match current `maturin generate-ci github` (Intel dedicated
+runner + Apple Silicon) — not a single `macos-latest` that only covers one arch.
 
 ## One-time GitHub + PyPI setup
 
