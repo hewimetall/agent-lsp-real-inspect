@@ -358,6 +358,10 @@ fn row_to_dict(py: Python<'_>, t: TaskRow) -> PyResult<Bound<'_, PyDict>> {
 #[pymodule]
 fn _tasks(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<TaskStore>()?;
+    // Sibling native types live in one extension so PyPI has a single package.
+    m.add_class::<agent_lsp_state::StateStore>()?;
+    m.add_class::<agent_lsp_git::GitService>()?;
+    m.add_class::<agent_lsp_docker::DockerService>()?;
     Ok(())
 }
 

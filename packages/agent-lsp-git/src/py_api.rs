@@ -71,7 +71,7 @@ impl GitService {
 }
 
 #[pymodule]
-fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn agent_lsp_git(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<GitService>()?;
     Ok(())
 }
@@ -88,7 +88,7 @@ mod tests {
         let dir = tempdir().unwrap();
         Python::attach(|py| {
             let m = PyModule::new(py, "g").unwrap();
-            _native(&m).unwrap();
+            agent_lsp_git(&m).unwrap();
             assert!(m.getattr("GitService").is_ok());
 
             let git = GitService::new();

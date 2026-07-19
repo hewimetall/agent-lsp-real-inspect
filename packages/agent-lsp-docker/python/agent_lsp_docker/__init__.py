@@ -1,5 +1,5 @@
-"""ContainerRuntime — long-lived session containers via bollard."""
+"""Local-only wrapper (prefer the root wheel's ``python/agent_lsp_docker``)."""
 
-from agent_lsp_docker._native import DockerService
+from agent_lsp_docker.agent_lsp_docker import DockerService
 
 __all__ = ["DockerService"]

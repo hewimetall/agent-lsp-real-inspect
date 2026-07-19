@@ -21,10 +21,8 @@ jobs:
           ln -sf "$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"/libpython3.12.so* .libs/libpython3.12.so || true
           ln -sf /usr/lib/x86_64-linux-gnu/libpython3.12.so.1.0 .libs/libpython3.12.so
           export LIBRARY_PATH="$PWD/.libs:$LIBRARY_PATH"
+          # One wheel: state/git/docker are path-deps of the root extension.
           uv run maturin develop
-          (cd packages/agent-lsp-state && uv run maturin develop)
-          (cd packages/agent-lsp-git && uv run maturin develop)
-          (cd packages/agent-lsp-docker && uv run maturin develop)
       - name: Pytest
         run: uv run pytest -q
       - name: Python coverage (median ≥ 93%)

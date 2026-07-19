@@ -17,4 +17,5 @@ dev = ["pytest>=8"]
 [tool.maturin]
 features = ["extension-module"]
 python-source = "python"
-module-name = "agent_lsp_git._native"
+# Not published to PyPI — types ship via the root agent-lsp wheel.
+module-name = "agent_lsp_git.agent_lsp_git"

@@ -110,7 +110,7 @@ impl DockerService {
 }
 
 #[pymodule]
-fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn agent_lsp_docker(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<DockerService>()?;
     Ok(())
 }
@@ -124,7 +124,7 @@ mod tests {
     fn registers_docker_service() {
         Python::attach(|py| {
             let m = PyModule::new(py, "d").unwrap();
-            _native(&m).unwrap();
+            agent_lsp_docker(&m).unwrap();
             assert!(m.getattr("DockerService").is_ok());
         });
     }

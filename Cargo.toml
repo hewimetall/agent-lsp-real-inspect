@@ -15,6 +15,10 @@ pyo3 = { version = "0.29" }
 rusqlite = { version = "0.37", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
 parking_lot = "0.12"
+# Internal crates — shipped inside the single root wheel (no separate PyPI dists).
+agent-lsp-state = { path = "packages/agent-lsp-state", default-features = false }
+agent-lsp-git = { path = "packages/agent-lsp-git", default-features = false }
+agent-lsp-docker = { path = "packages/agent-lsp-docker", default-features = false }
 
 [features]
 extension-module = ["pyo3/extension-module"]

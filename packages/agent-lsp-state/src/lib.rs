@@ -81,7 +81,7 @@ fn open_db(path: &str) -> PyResult<Connection> {
 
 /// Persistent sessions + workspaces + container bindings.
 #[pyclass(name = "StateStore")]
-struct StateStore {
+pub struct StateStore {
     conn: Mutex<Connection>,
 }
 
@@ -557,7 +557,7 @@ fn container_to_dict(py: Python<'_>, t: ContainerRow) -> PyResult<Bound<'_, PyDi
 }
 
 #[pymodule]
-fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn agent_lsp_state(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<StateStore>()?;
     Ok(())
 }

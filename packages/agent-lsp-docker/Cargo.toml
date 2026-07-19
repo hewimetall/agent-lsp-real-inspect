@@ -7,8 +7,9 @@ license = "MIT"
 publish = false
 
 [lib]
-name = "_native"
-crate-type = ["cdylib", "rlib"]
+# Unique lib name so the root wheel can path-depend on this crate.
+name = "agent_lsp_docker"
+crate-type = ["rlib", "cdylib"]
 
 [dependencies]
 pyo3 = { version = "0.29" }
