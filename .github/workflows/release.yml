@@ -186,10 +186,46 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          uv publish dist/agent_lsp_state-*
-          uv publish dist/agent_lsp_git-*
-          uv publish dist/agent_lsp_docker-*
-          uv publish dist/agent_lsp_real_inspect_mcp-*
+          # Dump METADATA Name before each upload. A pending Trusted Publisher
+          # whose project name != this Name creates an empty project then fails
+          # with: "Non-user identities cannot create new projects".
+          dump_names() {
+            local f
+            for f in "$@"; do
+              python3 - "$f" <<'PY'
+          import re, sys, tarfile, zipfile
+          path = sys.argv[1]
+          if path.endswith(".whl"):
+              with zipfile.ZipFile(path) as z:
+                  meta = next(n for n in z.namelist() if n.endswith("METADATA"))
+                  text = z.read(meta).decode()
+          else:
+              with tarfile.open(path) as t:
+                  mem = next(m for m in t.getmembers() if m.name.endswith("PKG-INFO"))
+                  text = t.extractfile(mem).read().decode()
+          name = re.search(r"^Name:\s*(.+)$", text, re.M).group(1).strip()
+          ver = re.search(r"^Version:\s*(.+)$", text, re.M).group(1).strip()
+          print(f"  {path}: Name={name!r} Version={ver!r}")
+          PY
+            done
+          }
+          publish_one() {
+            local prefix="$1"
+            local files=(dist/${prefix}-*)
+            if [[ ${#files[@]} -eq 0 || ! -e "${files[0]}" ]]; then
+              echo "no artifacts for ${prefix}" >&2
+              exit 1
+            fi
+            echo "=== publishing ${prefix} (${#files[@]} files) ==="
+            dump_names "${files[@]}"
+            uv publish "${files[@]}"
+          }
+          # Main first: an empty agent-lsp-real-inspect-mcp may already exist
+          # from a prior attempt that uploaded a sibling under the main publisher.
+          publish_one agent_lsp_real_inspect_mcp
+          publish_one agent_lsp_state
+          publish_one agent_lsp_git
+          publish_one agent_lsp_docker
 
       - name: Create / update GitHub Release
         env:
