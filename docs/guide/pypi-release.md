@@ -74,4 +74,17 @@ The first successful tag push creates the PyPI projects automatically.
 | Platform | Symptom | Fix |
 |----------|---------|-----|
 | Windows | `UnicodeEncodeError` on `→` in stamp script | ASCII `->` + `PYTHONUTF8=1` |
-| Linux | separate `maturin sdist` step: `sccache … No such file` | build sdist via `--sdist` in the same wheel step |
+| Linux build | separate `maturin sdist` step: `sccache … No such file` | build sdist via `--sdist` in the same wheel step |
+| Publish smoke | `ls *.whl \| head -1` picked `macosx_arm64` on Linux runner | select `*manylinux*.whl` only |
+
+### Checklist before tagging
+
+- [ ] `cargo test` / `pytest` green on `main`
+- [ ] Version bump decided (semver) — if prior tag never published, same `vX.Y.Z` may be retagged onto fixed commit
+- [ ] Trusted Publisher pending for all four projects (env `pypi`, workflow `release.yml`)
+- [ ] GitHub Environment `pypi` exists
+- [ ] Tag annotated: `git tag -a vX.Y.Z -m "…"` + `git push origin vX.Y.Z`
+- [ ] Watch Actions → Release: all build matrix green → smoke picks **manylinux** wheels → `uv publish` → PyPI 200
+- [ ] Confirm: `curl -sI https://pypi.org/pypi/agent-lsp-real-inspect-mcp/json` → 200
+- [ ] Confirm: `uvx agent-lsp-real-inspect-mcp --help`
+
