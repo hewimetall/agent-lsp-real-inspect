@@ -8,6 +8,10 @@ make cov-rust  # scripts/rust-coverage.sh    (median of per-crate %)
 make cov       # both
 ```
 
+Cloud agents: `.cursor/environment.json` runs `scripts/cursor-install.sh` on
+each boot (hot-swap update) so `uv sync` + `maturin develop` stay current
+before `make cov`.
+
 Env overrides:
 
 | Var | Default |

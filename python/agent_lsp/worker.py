@@ -455,7 +455,17 @@ class ScoutWorker:
             artifact["restarted_runtime"] = True
             server.get_state().set_index_status(session_id, "cold")
         elif rt is not None:
-            HUB.refresh_settings(session_id)
+            # Soft path (restart_runtime=False): push updated settings, but if the
+            # LSP TCP is already dead (Broken pipe), mark stale instead of no-op.
+            if not HUB._client_transport_alive(rt):
+                HUB.mark_runtime_stale(
+                    session_id,
+                    reason="dead LSP transport after deps install (hot-swap skipped)",
+                )
+                artifact["runtime_stale"] = True
+                server.get_state().set_index_status(session_id, "stale")
+            else:
+                HUB.refresh_settings(session_id)
 
         self._tasks.update(
             tid,
