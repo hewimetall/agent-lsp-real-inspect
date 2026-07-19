@@ -4,14 +4,14 @@ Scout LSP MCP-сервер: **FastMCP + Rust/PyO3** + **обязательный
 
 Стек как в [mcp-presentation](https://github.com/hewimetall/mcp-presentation).
 
-## Пакеты
+## Пакет (один на PyPI)
 
-| Пакет | Роль |
-|-------|------|
-| **`agent-lsp`** | FastMCP + **TaskStore** + scout tools + ScoutWorker |
-| **`agent-lsp-state`** | sessions / workspaces / container bindings |
-| **`agent-lsp-git`** | gix bare + worktree + clone |
-| **`agent-lsp-docker`** | bollard — контейнеры в сессии |
+| | Роль |
+|--|------|
+| **`agent-lsp-real-inspect-mcp`** | FastMCP + TaskStore + state/git/docker natives + scout tools |
+
+Import-compat wrappers remain: `agent_lsp_state`, `agent_lsp_git`, `agent_lsp_docker`
+(все внутри одного wheel).
 
 ## Task support (обязательно)
 
@@ -57,14 +57,15 @@ Published on tags `v*` as **`agent-lsp-real-inspect-mcp`**
 (upstream already owns the PyPI name `agent-lsp`).
 
 ```bash
-uvx agent-lsp-real-inspect-mcp
+uvx agent-lsp-real-inspect-mcp --help
+uvx agent-lsp-real-inspect-mcp==0.1.7
 # or
 uv tool install agent-lsp-real-inspect-mcp
-agent-lsp
+agent-lsp --help
 ```
 
-Cut a release: `git tag -a v0.1.6 -m v0.1.6 && git push origin v0.1.6`  
-Setup (Trusted Publisher + env `pypi`): [`docs/guide/pypi-release.md`](docs/guide/pypi-release.md).
+Cut a release: `git tag -a v0.1.7 -m v0.1.7 && git push origin v0.1.7`  
+Setup (один Trusted Publisher + env `pypi`): [`docs/guide/pypi-release.md`](docs/guide/pypi-release.md).
 
 ## Coverage
 
@@ -79,10 +80,7 @@ make cov-rust
 
 ```bash
 uv sync --extra dev
-maturin develop                              # TaskStore (core)
-(cd packages/agent-lsp-state && maturin develop)
-(cd packages/agent-lsp-git && maturin develop)
-(cd packages/agent-lsp-docker && maturin develop)
+maturin develop   # one extension: TaskStore + StateStore + GitService + DockerService
 pytest -q
 make cov
 ```

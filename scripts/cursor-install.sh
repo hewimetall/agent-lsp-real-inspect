@@ -36,9 +36,7 @@ if ! command -v maturin >/dev/null 2>&1; then
   uv tool install maturin >/dev/null 2>&1 || uv pip install maturin
 fi
 
-for d in . packages/agent-lsp-state packages/agent-lsp-git packages/agent-lsp-docker; do
-  echo "==> maturin develop $d"
-  (cd "$d" && maturin develop --uv)
-done
+echo "==> maturin develop (single wheel: state/git/docker path-deps)"
+maturin develop --uv
 
 echo "OK: cursor-install hot-swap update complete"

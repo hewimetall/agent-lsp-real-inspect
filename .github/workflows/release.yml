@@ -1,18 +1,14 @@
-# Publish Rust/PyO3 wheels to PyPI on version tags (v*).
+# Publish the single Rust/PyO3 wheel to PyPI on version tags (v*).
 #
-# PyPI trusted publishers (pending or active) must match:
+# One PyPI Trusted Publisher:
+#   Project: agent-lsp-real-inspect-mcp
 #   Owner: hewimetall
 #   Repository: agent-lsp-real-inspect
 #   Workflow: release.yml
 #   Environment: pypi
 #
-# Projects (one Trusted Publisher each):
-#   - agent-lsp-state
-#   - agent-lsp-git
-#   - agent-lsp-docker
-#   - agent-lsp-real-inspect-mcp   ← main; ``uvx agent-lsp-real-inspect-mcp``
-#
 # ``agent-lsp`` on PyPI is the upstream Go package — do not reuse that name.
+# state / git / docker native types ship inside this one wheel.
 #
 # macOS matrix follows ``maturin generate-ci github`` (2026):
 #   macos-15-intel → x86_64, macos-latest → aarch64
@@ -32,42 +28,28 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # Broadest practical macOS support for both Intel + Apple Silicon wheels.
   MACOSX_DEPLOYMENT_TARGET: "11.0"
 
 jobs:
   build:
-    name: Build (${{ matrix.platform.runner }} / ${{ matrix.platform.target }} / ${{ matrix.package.artifact }})
+    name: Build (${{ matrix.platform.runner }} / ${{ matrix.platform.target }})
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       fail-fast: false
       matrix:
-        package:
-          - workdir: packages/agent-lsp-state
-            artifact: agent-lsp-state
-          - workdir: packages/agent-lsp-git
-            artifact: agent-lsp-git
-          - workdir: packages/agent-lsp-docker
-            artifact: agent-lsp-docker
-          - workdir: .
-            artifact: agent-lsp-real-inspect-mcp
         platform:
-          # Linux x86_64 (manylinux)
           - runner: ubuntu-latest
             target: x86_64
             manylinux: auto
             tag: linux-x86_64
-          # macOS Intel (dedicated Intel runner — not cross from arm)
           - runner: macos-15-intel
             target: x86_64
             manylinux: "off"
             tag: macos-x86_64
-          # macOS Apple Silicon
           - runner: macos-latest
             target: aarch64
             manylinux: "off"
             tag: macos-aarch64
-          # Windows x64
           - runner: windows-latest
             target: x64
             manylinux: "off"
@@ -103,7 +85,6 @@ jobs:
       - name: Build wheels (maturin)
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: ${{ matrix.package.workdir }}
           target: ${{ matrix.platform.target }}
           command: build
           args: >-
@@ -116,8 +97,8 @@ jobs:
       - name: Upload dist
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.package.artifact }}-${{ matrix.platform.tag }}
-          path: ${{ matrix.package.workdir }}/dist/*
+          name: wheels-${{ matrix.platform.tag }}
+          path: dist/*
           if-no-files-found: error
 
   publish:
@@ -155,44 +136,34 @@ jobs:
       - name: Show dist
         run: find dist -type f | sort
 
-      - name: Smoke test (linux manylinux wheels only)
+      - name: Smoke test (linux manylinux wheel only)
         shell: bash
         run: |
           set -euo pipefail
           # CRITICAL: dist/ also has macosx_* and win_amd64 wheels. Plain
           # `ls *.whl | head -1` picks macosx_arm64 alphabetically and uv fails
           # with "incompatible with the current platform" on the Linux runner.
-          pick_manylinux() {
-            local pattern="$1"
-            local hit
-            hit=$(compgen -G "dist/${pattern}*manylinux*.whl" | sort | head -1 || true)
-            if [[ -z "$hit" ]]; then
-              echo "missing manylinux wheel for ${pattern}" >&2
-              ls -la dist/ >&2 || true
-              exit 1
-            fi
-            printf '%s\n' "$hit"
-          }
-          state=$(pick_manylinux agent_lsp_state-)
-          gitw=$(pick_manylinux agent_lsp_git-)
-          dock=$(pick_manylinux agent_lsp_docker-)
-          core=$(pick_manylinux agent_lsp_real_inspect_mcp-)
-          echo "smoke wheels: $state | $gitw | $dock | $core"
-          uv run --isolated --no-project \
-            --with "$state" --with "$gitw" --with "$dock" --with "$core" \
-            tests/smoke_pypi.py
+          hit=$(compgen -G "dist/agent_lsp_real_inspect_mcp-*manylinux*.whl" | sort | head -1 || true)
+          if [[ -z "$hit" ]]; then
+            echo "missing manylinux wheel" >&2
+            ls -la dist/ >&2 || true
+            exit 1
+          fi
+          echo "smoke wheel: $hit"
+          uv run --isolated --no-project --with "$hit" tests/smoke_pypi.py
 
       - name: Publish to PyPI (Trusted Publisher)
         run: |
           set -euo pipefail
           shopt -s nullglob
-          # Dump METADATA Name before each upload. A pending Trusted Publisher
-          # whose project name != this Name creates an empty project then fails
-          # with: "Non-user identities cannot create new projects".
-          dump_names() {
-            local f
-            for f in "$@"; do
-              python3 - "$f" <<'PY'
+          files=(dist/agent_lsp_real_inspect_mcp-*)
+          if [[ ${#files[@]} -eq 0 || ! -e "${files[0]}" ]]; then
+            echo "no artifacts for agent_lsp_real_inspect_mcp" >&2
+            exit 1
+          fi
+          echo "=== publishing agent_lsp_real_inspect_mcp (${#files[@]} files) ==="
+          for f in "${files[@]}"; do
+            python3 - "$f" <<'PY'
           import re, sys, tarfile, zipfile
           path = sys.argv[1]
           if path.endswith(".whl"):
@@ -207,51 +178,8 @@ jobs:
           ver = re.search(r"^Version:\s*(.+)$", text, re.M).group(1).strip()
           print(f"  {path}: Name={name!r} Version={ver!r}")
           PY
-            done
-          }
-          publish_one() {
-            local prefix="$1"
-            local files=(dist/${prefix}-*)
-            local log
-            if [[ ${#files[@]} -eq 0 || ! -e "${files[0]}" ]]; then
-              echo "no artifacts for ${prefix}" >&2
-              return 1
-            fi
-            echo "=== publishing ${prefix} (${#files[@]} files) ==="
-            dump_names "${files[@]}"
-            log="$(mktemp)"
-            # Retry-safe: a prior partial release may already have uploaded some
-            # files (e.g. main landed, siblings blocked on pending publishers).
-            if uv publish "${files[@]}" 2>&1 | tee "$log"; then
-              echo "OK ${prefix}"
-              return 0
-            fi
-            if grep -Eiq 'file already exists|already been uploaded' "$log"; then
-              echo "OK ${prefix} (already on PyPI)"
-              return 0
-            fi
-            echo "FAIL ${prefix}" >&2
-            return 1
-          }
-          # Main first (may already be on PyPI from a partial v0.1.6 run).
-          # Continue siblings even if one fails so CI reports every missing publisher.
-          failed=()
-          for prefix in \
-            agent_lsp_real_inspect_mcp \
-            agent_lsp_state \
-            agent_lsp_git \
-            agent_lsp_docker
-          do
-            publish_one "$prefix" || failed+=("$prefix")
           done
-          if ((${#failed[@]} > 0)); then
-            echo >&2
-            echo "Publish incomplete. Failed packages: ${failed[*]}" >&2
-            echo "Each needs a PyPI Trusted Publisher whose project name matches" >&2
-            echo "wheel METADATA Name: exactly (env=pypi, workflow=release.yml)." >&2
-            echo "See docs/guide/pypi-release.md" >&2
-            exit 1
-          fi
+          uv publish "${files[@]}"
 
       - name: Create / update GitHub Release
         env:
@@ -271,12 +199,12 @@ jobs:
         run: |
           ver="${GITHUB_REF_NAME#v}"
           cat <<EOF
-          Published ${GITHUB_REF_NAME} to PyPI.
+          Published ${GITHUB_REF_NAME} to PyPI (single package).
 
             uvx agent-lsp-real-inspect-mcp
             uvx agent-lsp-real-inspect-mcp==${ver}
             uv tool install agent-lsp-real-inspect-mcp==${ver}
-            agent-lsp
+            agent-lsp --help
 
           macOS wheels: x86_64 (macos-15-intel) + aarch64 (macos-latest)
           EOF

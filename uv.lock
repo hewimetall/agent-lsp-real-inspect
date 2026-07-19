@@ -9,22 +9,11 @@ resolution-markers = [
     "python_full_version < '3.14' and sys_platform != 'win32'",
 ]
 
-[manifest]
-members = [
-    "agent-lsp",
-    "agent-lsp-docker",
-    "agent-lsp-git",
-    "agent-lsp-state",
-]
-
 [[package]]
 name = "agent-lsp"
-version = "0.1.5"
+version = "0.1.7"
 source = { editable = "." }
 dependencies = [
-    { name = "agent-lsp-docker" },
-    { name = "agent-lsp-git" },
-    { name = "agent-lsp-state" },
     { name = "fastmcp", extra = ["tasks"] },
     { name = "pydantic" },
 ]
@@ -40,9 +29,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agent-lsp-docker", editable = "packages/agent-lsp-docker" },
-    { name = "agent-lsp-git", editable = "packages/agent-lsp-git" },
-    { name = "agent-lsp-state", editable = "packages/agent-lsp-state" },
     { name = "fastmcp", extras = ["tasks"], specifier = ">=2.0" },
     { name = "maturin", marker = "extra == 'dev'", specifier = ">=1.8,<2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.16" },
@@ -51,48 +37,6 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.12" },
 ]
-provides-extras = ["dev"]
-
-[[package]]
-name = "agent-lsp-docker"
-version = "0.1.0"
-source = { editable = "packages/agent-lsp-docker" }
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "pytest", marker = "extra == 'dev'", specifier = ">=8" }]
-provides-extras = ["dev"]
-
-[[package]]
-name = "agent-lsp-git"
-version = "0.1.0"
-source = { editable = "packages/agent-lsp-git" }
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "pytest", marker = "extra == 'dev'", specifier = ">=8" }]
-provides-extras = ["dev"]
-
-[[package]]
-name = "agent-lsp-state"
-version = "0.1.0"
-source = { editable = "packages/agent-lsp-state" }
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "pytest", marker = "extra == 'dev'", specifier = ">=8" }]
 provides-extras = ["dev"]
 
 [[package]]

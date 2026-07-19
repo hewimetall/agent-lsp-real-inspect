@@ -1,5 +1,5 @@
-"""GitPort — bare repos, worktrees, commit, clone (gix, no CLI)."""
+"""Local-only wrapper (prefer the root wheel's ``python/agent_lsp_git``)."""
 
-from agent_lsp_git._native import GitService
+from agent_lsp_git.agent_lsp_git import GitService
 
 __all__ = ["GitService"]
