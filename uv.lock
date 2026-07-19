@@ -10,7 +10,7 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "agent-lsp-real-inspect-mcp"
+name = "agent-lsp"
 version = "0.1.7"
 source = { editable = "." }
 dependencies = [

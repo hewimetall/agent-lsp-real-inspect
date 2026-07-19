@@ -21,6 +21,17 @@ def test_package_exposes_version() -> None:
     assert agent_lsp.__version__ == _version.package_version()
 
 
+def test_package_lazy_native_exports() -> None:
+    from agent_lsp._tasks import DockerService, GitService, StateStore, TaskStore
+
+    assert agent_lsp.TaskStore is TaskStore
+    assert agent_lsp.StateStore is StateStore
+    assert agent_lsp.GitService is GitService
+    assert agent_lsp.DockerService is DockerService
+    with pytest.raises(AttributeError, match="has no attribute"):
+        _ = agent_lsp.not_a_real_export  # type: ignore[attr-defined]
+
+
 def test_package_version_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     from importlib.metadata import PackageNotFoundError
 

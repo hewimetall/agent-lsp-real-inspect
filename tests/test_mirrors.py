@@ -222,3 +222,34 @@ def test_ensure_data_dirs_uses_mirrors_dir(
     monkeypatch.setattr(paths_mod, "CACHE_DIR", tmp_path / "cache")
     paths_mod.ensure_data_dirs()
     assert (tmp_path / "m").is_dir()
+
+
+def test_catalog_unknown_mirror_and_load_edge_cases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    toml = tmp_path / "mirrors.toml"
+    toml.write_text(
+        """
+[[mirror]]
+id = "demo"
+url = "https://example.com/demo.git"
+depth = 0
+kind = "weird"
+
+[[mirror]]
+id = ""
+url = "https://example.com/skip.git"
+""",
+        encoding="utf-8",
+    )
+    cat = mirrors_mod.load_catalog(toml)
+    assert cat.get("demo").depth == 1
+    assert cat.get("demo").kind == "shallow"
+    with pytest.raises(KeyError, match="unknown mirror"):
+        cat.get("nope")
+    missing = tmp_path / "missing.toml"
+    with pytest.raises(FileNotFoundError, match="mirrors.toml not found"):
+        mirrors_mod.load_catalog(missing)
+    monkeypatch.delenv("AGENT_LSP_MIRRORS_TOML", raising=False)
+    monkeypatch.setattr(mirrors_mod, "_DEFAULT_TOML_CANDIDATES", ())
+    assert mirrors_mod.mirrors_toml_path(prefer=tmp_path / "nope.toml").name == "nope.toml"
