@@ -226,7 +226,7 @@ jobs:
               echo "OK ${prefix}"
               return 0
             fi
-            if rg -qi 'file already exists|already been uploaded|403.*already' "$log"; then
+            if grep -Eiq 'file already exists|already been uploaded' "$log"; then
               echo "OK ${prefix} (already on PyPI)"
               return 0
             fi
