@@ -155,14 +155,29 @@ jobs:
       - name: Show dist
         run: find dist -type f | sort
 
-      - name: Smoke test (linux wheels)
+      - name: Smoke test (linux manylinux wheels only)
         shell: bash
         run: |
           set -euo pipefail
-          state=$(ls dist/agent_lsp_state-*.whl | head -1)
-          gitw=$(ls dist/agent_lsp_git-*.whl | head -1)
-          dock=$(ls dist/agent_lsp_docker-*.whl | head -1)
-          core=$(ls dist/agent_lsp_real_inspect_mcp-*.whl | head -1)
+          # CRITICAL: dist/ also has macosx_* and win_amd64 wheels. Plain
+          # `ls *.whl | head -1` picks macosx_arm64 alphabetically and uv fails
+          # with "incompatible with the current platform" on the Linux runner.
+          pick_manylinux() {
+            local pattern="$1"
+            local hit
+            hit=$(compgen -G "dist/${pattern}*manylinux*.whl" | sort | head -1 || true)
+            if [[ -z "$hit" ]]; then
+              echo "missing manylinux wheel for ${pattern}" >&2
+              ls -la dist/ >&2 || true
+              exit 1
+            fi
+            printf '%s\n' "$hit"
+          }
+          state=$(pick_manylinux agent_lsp_state-)
+          gitw=$(pick_manylinux agent_lsp_git-)
+          dock=$(pick_manylinux agent_lsp_docker-)
+          core=$(pick_manylinux agent_lsp_real_inspect_mcp-)
+          echo "smoke wheels: $state | $gitw | $dock | $core"
           uv run --isolated --no-project \
             --with "$state" --with "$gitw" --with "$dock" --with "$core" \
             tests/smoke_pypi.py
