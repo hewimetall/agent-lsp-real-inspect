@@ -11,11 +11,14 @@ uvx agent-lsp-real-inspect-mcp
 uvx agent-lsp-real-inspect-mcp==0.1.6
 # or install as a tool
 uv tool install agent-lsp-real-inspect-mcp
-agent-lsp   # same entrypoint
+agent-lsp   # same entrypoint (starts MCP stdio server)
 ```
 
 > PyPI name is **`agent-lsp-real-inspect-mcp`**. Upstream already owns
 > [`agent-lsp`](https://pypi.org/project/agent-lsp/) (Go monolith).
+
+> Note: `--help` currently starts the MCP server (FastMCP), it does **not**
+> print a CLI usage banner. Prefer import/smoke checks for release verification.
 
 ## Cut a release
 
@@ -35,8 +38,8 @@ The workflow:
    - macOS **aarch64** (`macos-latest`)
    - Windows x64 (`windows-latest`)
    - plus sdists on Linux
-4. Smoke-imports the linux wheels
-5. Publishes with **Trusted Publishing** (`uv publish`, env `pypi`)
+4. Smoke-imports the linux **manylinux** wheels only
+5. Publishes with **Trusted Publishing** (`uv publish`, env `pypi`) — main first, then siblings
 6. Attaches artifacts to the GitHub Release
 
 macOS runners match current `maturin generate-ci github` (Intel dedicated
@@ -54,9 +57,11 @@ Repo → **Settings → Environments → New environment**
 
 Optional: require reviewers before the publish job runs.
 
-### 2. PyPI Trusted Publishers (pending)
+### 2. PyPI Trusted Publishers (pending) — REQUIRED for all four
 
-For **each** project below, PyPI → Publishing → **Add a new pending publisher**:
+For **each** project below, PyPI → Publishing → **Add a new pending publisher**.
+The **PyPI project** column must match wheel `Name:` metadata **exactly**
+(hyphens, not underscores).
 
 | PyPI project | Owner | Repository | Workflow | Environment |
 |--------------|-------|------------|----------|-------------|
@@ -67,24 +72,60 @@ For **each** project below, PyPI → Publishing → **Add a new pending publishe
 
 Publisher provider: **GitHub**.
 
-The first successful tag push creates the PyPI projects automatically.
+The first successful upload for a pending publisher creates that PyPI project.
+
+#### Current gate (v0.1.6)
+
+Verified 2026-07-19 after Release run
+[29691916098](https://github.com/hewimetall/agent-lsp-real-inspect/actions/runs/29691916098):
+
+| Check | Result |
+|-------|--------|
+| Build matrix (16 jobs) | green |
+| Smoke (manylinux pick) | green (`smoke_ok`) |
+| `uv publish` | **FAILED** on first sibling |
+| PyPI JSON for all four | still 404 (no files) |
+| Empty project `agent-lsp-real-inspect-mcp` | **exists** (`/simple/` 200, no files) |
+
+Error:
+
+```text
+400 Non-user identities cannot create new projects. This was probably caused by
+successfully using a pending publisher but specifying the project name incorrectly
+```
+
+Interpretation (PyPI docs): a pending publisher for
+`agent-lsp-real-inspect-mcp` fired while uploading `agent-lsp-state` first →
+empty main project created, upload rejected (metadata name mismatch).
+
+**Human action before next tag / re-run:**
+
+1. Confirm Trusted Publisher is attached on existing empty project
+   `agent-lsp-real-inspect-mcp` (pending was consumed when the project was created).
+2. Add **pending** publishers for the three siblings with exact names:
+   `agent-lsp-state`, `agent-lsp-git`, `agent-lsp-docker`
+   (same owner/repo/workflow=`release.yml`/env=`pypi`).
+3. Do **not** retag until those three pending publishers exist.
+4. After publishers are ready: retag `v0.1.6` (still unpublished files) or bump.
+
+Do **not** ship only the main package: it depends on the three siblings.
 
 ## CI failure notes (v0.1.6)
 
-| Platform | Symptom | Fix |
-|----------|---------|-----|
-| Windows | `UnicodeEncodeError` on `→` in stamp script | ASCII `->` + `PYTHONUTF8=1` |
+| Stage | Symptom | Fix |
+|-------|---------|-----|
+| Windows build | `UnicodeEncodeError` on `→` in stamp script | ASCII `->` + `PYTHONUTF8=1` |
 | Linux build | separate `maturin sdist` step: `sccache … No such file` | build sdist via `--sdist` in the same wheel step |
 | Publish smoke | `ls *.whl \| head -1` picked `macosx_arm64` on Linux runner | select `*manylinux*.whl` only |
+| `uv publish` | pending publisher name ≠ wheel `Name:` (siblings missing) | four matching publishers; publish main first |
 
 ### Checklist before tagging
 
 - [ ] `cargo test` / `pytest` green on `main`
-- [ ] Version bump decided (semver) — if prior tag never published, same `vX.Y.Z` may be retagged onto fixed commit
-- [ ] Trusted Publisher pending for all four projects (env `pypi`, workflow `release.yml`)
+- [ ] Version bump decided (semver) — if prior tag never published files, same `vX.Y.Z` may be retagged
+- [ ] Trusted Publisher ready for **all four** names above (env `pypi`, workflow `release.yml`)
 - [ ] GitHub Environment `pypi` exists
 - [ ] Tag annotated: `git tag -a vX.Y.Z -m "…"` + `git push origin vX.Y.Z`
-- [ ] Watch Actions → Release: all build matrix green → smoke picks **manylinux** wheels → `uv publish` → PyPI 200
-- [ ] Confirm: `curl -sI https://pypi.org/pypi/agent-lsp-real-inspect-mcp/json` → 200
-- [ ] Confirm: `uvx agent-lsp-real-inspect-mcp --help`
-
+- [ ] Watch Actions → Release: build green → smoke manylinux → `uv publish` all four → Release assets
+- [ ] Confirm: `curl -sI https://pypi.org/pypi/<each-of-four>/json` → 200
+- [ ] Confirm: `uvx agent-lsp-real-inspect-mcp` starts MCP (stdio); entrypoints `agent-lsp` + `agent-lsp-real-inspect-mcp`
