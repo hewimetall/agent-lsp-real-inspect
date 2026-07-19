@@ -212,20 +212,46 @@ jobs:
           publish_one() {
             local prefix="$1"
             local files=(dist/${prefix}-*)
+            local log
             if [[ ${#files[@]} -eq 0 || ! -e "${files[0]}" ]]; then
               echo "no artifacts for ${prefix}" >&2
-              exit 1
+              return 1
             fi
             echo "=== publishing ${prefix} (${#files[@]} files) ==="
             dump_names "${files[@]}"
-            uv publish "${files[@]}"
+            log="$(mktemp)"
+            # Retry-safe: a prior partial release may already have uploaded some
+            # files (e.g. main landed, siblings blocked on pending publishers).
+            if uv publish "${files[@]}" 2>&1 | tee "$log"; then
+              echo "OK ${prefix}"
+              return 0
+            fi
+            if grep -Eiq 'file already exists|already been uploaded' "$log"; then
+              echo "OK ${prefix} (already on PyPI)"
+              return 0
+            fi
+            echo "FAIL ${prefix}" >&2
+            return 1
           }
-          # Main first: an empty agent-lsp-real-inspect-mcp may already exist
-          # from a prior attempt that uploaded a sibling under the main publisher.
-          publish_one agent_lsp_real_inspect_mcp
-          publish_one agent_lsp_state
-          publish_one agent_lsp_git
-          publish_one agent_lsp_docker
+          # Main first (may already be on PyPI from a partial v0.1.6 run).
+          # Continue siblings even if one fails so CI reports every missing publisher.
+          failed=()
+          for prefix in \
+            agent_lsp_real_inspect_mcp \
+            agent_lsp_state \
+            agent_lsp_git \
+            agent_lsp_docker
+          do
+            publish_one "$prefix" || failed+=("$prefix")
+          done
+          if ((${#failed[@]} > 0)); then
+            echo >&2
+            echo "Publish incomplete. Failed packages: ${failed[*]}" >&2
+            echo "Each needs a PyPI Trusted Publisher whose project name matches" >&2
+            echo "wheel METADATA Name: exactly (env=pypi, workflow=release.yml)." >&2
+            echo "See docs/guide/pypi-release.md" >&2
+            exit 1
+          fi
 
       - name: Create / update GitHub Release
         env:

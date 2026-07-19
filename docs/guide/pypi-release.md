@@ -72,41 +72,37 @@ Publisher provider: **GitHub**.
 
 The first successful upload for a pending publisher creates that PyPI project.
 
-#### Current gate (v0.1.6)
+#### Current gate (v0.1.6) — PARTIAL
 
 Verified 2026-07-19 after Release run
-[29691916098](https://github.com/hewimetall/agent-lsp-real-inspect/actions/runs/29691916098):
+[29694288839](https://github.com/hewimetall/agent-lsp-real-inspect/actions/runs/29694288839):
 
-| Check | Result |
-|-------|--------|
-| Build matrix (16 jobs) | green |
-| Smoke (manylinux pick) | green (`smoke_ok`) |
-| `uv publish` | **FAILED** on first sibling |
-| PyPI JSON for all four | still 404 (no files) |
-| Empty project `agent-lsp-real-inspect-mcp` | **exists** (`/simple/` 200, no files) |
+| Package | PyPI |
+|---------|------|
+| `agent-lsp-real-inspect-mcp==0.1.6` | **published** (5 files) |
+| `agent-lsp-state==0.1.6` | **missing** (404) |
+| `agent-lsp-git==0.1.6` | **missing** (404) |
+| `agent-lsp-docker==0.1.6` | **missing** (404) |
 
-Error:
+`uvx agent-lsp-real-inspect-mcp==0.1.6` is **unusable** until siblings exist
+(main pins `agent-lsp-state==0.1.6` etc.).
+
+Sibling upload error:
 
 ```text
 400 Non-user identities cannot create new projects. This was probably caused by
 successfully using a pending publisher but specifying the project name incorrectly
 ```
 
-Interpretation (PyPI docs): a pending publisher for
-`agent-lsp-real-inspect-mcp` fired while uploading `agent-lsp-state` first →
-empty main project created, upload rejected (metadata name mismatch).
+**Human action (required):**
 
-**Human action before next tag / re-run:**
-
-1. Confirm Trusted Publisher is attached on existing empty project
-   `agent-lsp-real-inspect-mcp` (pending was consumed when the project was created).
-2. Add **pending** publishers for the three siblings with exact names:
+1. On PyPI, add **pending** Trusted Publishers for exact names:
    `agent-lsp-state`, `agent-lsp-git`, `agent-lsp-docker`
-   (same owner/repo/workflow=`release.yml`/env=`pypi`).
-3. Do **not** retag until those three pending publishers exist.
-4. After publishers are ready: retag `v0.1.6` (still unpublished files) or bump.
-
-Do **not** ship only the main package: it depends on the three siblings.
+   (owner `hewimetall`, repo `agent-lsp-real-inspect`, workflow `release.yml`, env `pypi`).
+2. Main project already has a Trusted Publisher from the successful upload — do not
+   create a duplicate pending for `agent-lsp-real-inspect-mcp`.
+3. Retag / re-run `v0.1.6`. Publish step is retry-safe: already-uploaded main files
+   count as OK; workflow continues siblings and fails with a summary if any remain blocked.
 
 ## CI failure notes (v0.1.6)
 
