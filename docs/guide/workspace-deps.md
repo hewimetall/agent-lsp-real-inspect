@@ -28,11 +28,19 @@ blast_radius / find_references / explore_symbol
 - Applied inside the **throwaway install container** (same run as pip/npm/go) so native build deps exist while compiling wheels / cgo / node-gyp.
 - They do **not** permanently mutate the session-held LSP image (ADR-0007 / ADR-0010).
 
-## Adding more deps later
+## Adding more deps later (hot-swap)
 
-Call `install_workspace_deps` again with more `packages`. By default the session LSP is
-**force-recycled** (`ensure_container(..., force=True)`) so site-packages / node_modules
-are reloaded without leaving the session cold; then `warm_index` again.
+Call `install_workspace_deps` again with more `packages`. By default
+(`restart_runtime=true`) the session LSP is **force-recycled**
+(`ensure_container(..., force=True)` / `ensure_local(..., force=True)`) so
+site-packages / node_modules are reloaded without leaving the session cold —
+replacement starts first; the previous runtime is torn down only after the new
+LSP is reachable. Then call `warm_index` again.
+
+If recycle fails, the previous runtime is kept with `needs_recycle=True` (index
+`cold`); the next `ensure_runtime` must start a fresh LSP. With
+`restart_runtime=false`, settings are refreshed in-place; a dead TCP transport
+(Broken pipe) is marked `stale` instead of a silent no-op.
 
 ## Version pins
 
