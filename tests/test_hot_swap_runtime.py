@@ -13,7 +13,6 @@ pytest.importorskip("agent_lsp_git")
 
 from agent_lsp import paths as paths_mod
 from agent_lsp import server
-from agent_lsp._tasks import TaskStore
 from agent_lsp.runtime_hub import RuntimeHub, SessionRuntime
 from agent_lsp.worker import ScoutWorker
 
