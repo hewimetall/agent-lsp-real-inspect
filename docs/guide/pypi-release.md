@@ -4,8 +4,7 @@ Publish **one** manylinux / macOS / Windows wheel on every `v*` tag via
 [`.github/workflows/release.yml`](../../.github/workflows/release.yml).
 
 Native `StateStore` / `GitService` / `DockerService` ship inside the same wheel
-(Python import names `agent_lsp_state` / `agent_lsp_git` / `agent_lsp_docker`
-are kept as thin wrappers).
+as `agent_lsp._tasks` (also re-exported from `agent_lsp`).
 
 ## Install / run with uv
 

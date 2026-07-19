@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-pytest.importorskip("agent_lsp_state")
-pytest.importorskip("agent_lsp_git")
+pytest.importorskip("agent_lsp._tasks")
+
 
 from agent_lsp import paths as paths_mod
 from agent_lsp import server

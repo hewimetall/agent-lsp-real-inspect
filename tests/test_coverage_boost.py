@@ -10,8 +10,6 @@ from unittest.mock import MagicMock
 import pytest
 
 pytest.importorskip("agent_lsp._tasks")
-pytest.importorskip("agent_lsp_state")
-pytest.importorskip("agent_lsp_git")
 
 from agent_lsp import paths as paths_mod
 from agent_lsp import server

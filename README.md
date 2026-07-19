@@ -10,8 +10,7 @@ Scout LSP MCP-сервер: **FastMCP + Rust/PyO3** + **обязательный
 |--|------|
 | **`agent-lsp-real-inspect-mcp`** | FastMCP + TaskStore + state/git/docker natives + scout tools |
 
-Import-compat wrappers remain: `agent_lsp_state`, `agent_lsp_git`, `agent_lsp_docker`
-(все внутри одного wheel).
+Импорт: `from agent_lsp._tasks import StateStore, GitService, DockerService, TaskStore`.
 
 ## Task support (обязательно)
 

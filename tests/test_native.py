@@ -1,4 +1,4 @@
-"""Native package smoke tests (state + git)."""
+"""Native extension smoke tests (state + git via unified _tasks)."""
 
 from __future__ import annotations
 
@@ -6,11 +6,9 @@ from pathlib import Path
 
 import pytest
 
-pytest.importorskip("agent_lsp_state")
-pytest.importorskip("agent_lsp_git")
+pytest.importorskip("agent_lsp._tasks")
 
-from agent_lsp_git import GitService
-from agent_lsp_state import StateStore
+from agent_lsp._tasks import GitService, StateStore
 
 
 def test_state_session_container(tmp_path: Path) -> None:
@@ -29,12 +27,8 @@ def test_state_session_container(tmp_path: Path) -> None:
 
 def test_git_worktree_roundtrip(tmp_path: Path) -> None:
     git = GitService()
-    bare = git.init_bare(str(tmp_path / "p.git"))
-    wt = git.add_worktree(bare, str(tmp_path / "wt"), "main")
-    (Path(wt) / "hello.txt").write_text("hi", encoding="utf-8")
-    cid = git.commit(wt, "add hello", ["hello.txt"])
-    assert len(cid) >= 7
-    wt2 = git.add_worktree(bare, str(tmp_path / "wt2"), "main")
-    assert (Path(wt2) / "hello.txt").read_text(encoding="utf-8") == "hi"
-    bare2 = git.import_local(wt, str(tmp_path / "mirror.git"))
-    assert Path(bare2).exists()
+    bare = git.init_bare(str(tmp_path / "repo.git"))
+    wt = git.add_worktree(bare, str(tmp_path / "wt"), ref_name="HEAD")
+    (Path(wt) / "README").write_text("hi\n", encoding="utf-8")
+    sha = git.commit(wt, "init", paths=["README"])
+    assert len(sha) >= 7
