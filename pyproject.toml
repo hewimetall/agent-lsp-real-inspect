@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "agent-lsp"
 version = "0.1.7"
-description = "Scout LSP MCP — FastMCP + Rust/PyO3 (tasks, sessions, worktrees, blast_radius)"
+description = "MCP server: warm LSP index for coding agents (blast_radius, explore_symbol)"
 requires-python = ">=3.12"
 readme = "README.md"
 license = "MIT"

@@ -1,103 +1,134 @@
-# agent-lsp
+# agent-lsp-real-inspect-mcp
 
-Scout LSP MCP-сервер: **FastMCP + Rust/PyO3** + **обязательный task support**.
+MCP server that gives coding agents a **warm LSP index** — so they can inspect symbols and check **blast radius** before editing code.
 
-Стек как в [mcp-presentation](https://github.com/hewimetall/mcp-presentation).
+## Try it (30 seconds)
 
-## Пакет (один на PyPI)
+```bash
+uvx agent-lsp-real-inspect-mcp --version
+uvx agent-lsp-real-inspect-mcp --help
+```
 
-| | Роль |
-|--|------|
-| **`agent-lsp-real-inspect-mcp`** | FastMCP + TaskStore + state/git/docker natives + scout tools |
+You should see the package version and a short CLI help. That means the PyPI install works.
 
-Импорт: `from agent_lsp._tasks import StateStore, GitService, DockerService, TaskStore`.
+To start the MCP server (stdio — it will sit waiting for a client):
 
-## Task support (обязательно)
+```bash
+uvx agent-lsp-real-inspect-mcp
+```
 
-`import_project` / `ensure_runtime` / `install_workspace_deps` /
-`install_apt_packages` / `warm_index` → `TaskConfig(mode="required")`.
+| Name | What it is |
+|------|------------|
+| **`agent-lsp-real-inspect-mcp`** | PyPI package + `uvx` command (use this) |
+| `agent-lsp` | Short console script alias after install |
+| [blackwell-systems/agent-lsp](https://github.com/blackwell-systems/agent-lsp) | **Different** project (Go). Owns the PyPI name `agent-lsp`. |
 
-Клиент **должен** вызывать с `task=True`. Очередь — SQLite `state/tasks.db`,
-не Docket. Docs: [`docs/guide/tasks.md`](docs/guide/tasks.md) ·
-[`docs/guide/workspace-deps.md`](docs/guide/workspace-deps.md) ·
-ADL: [`docs/adr/`](docs/adr/README.md).
+## Cursor setup
 
-## Happy path
+1. Add to MCP config (`~/.cursor/mcp.json` or project `.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "agent-lsp": {
+      "command": "uvx",
+      "args": ["agent-lsp-real-inspect-mcp"],
+      "env": {
+        "FASTMCP_SHOW_CLI_BANNER": "false"
+      }
+    }
+  }
+}
+```
+
+2. Restart MCP / reload Cursor.
+3. Confirm the server shows tools such as `create_session`, `warm_index`, `blast_radius`.
+4. Ask the agent something like: *“Create a scout session and import this repo.”*
+
+Pin a version: `"args": ["agent-lsp-real-inspect-mcp==0.1.7"]`.
+
+## Requirements
+
+| Need | When |
+|------|------|
+| Python ≥ 3.12 + [`uv`](https://docs.astral.sh/uv/) | always (`uvx`) |
+| **Docker** | only for real scout work (`ensure_runtime` / `warm_index` / deps). Not needed for `--help` / `--version`. |
+
+Languages: **Go · Python · TypeScript · Rust · C/C++**
+
+## What you get
+
+Compared to grep/read loops:
+
+| Tool | Job |
+|------|-----|
+| `blast_radius` | What else breaks / depends on this change |
+| `explore_symbol` | Hover + defs + refs in one call |
+| `warm_index` | Index once; later calls reuse the warm runtime |
+| `find_references` / `go_to_definition` / `list_symbols` | Standard LSP ops for agents |
+
+Long setup tools (`import_project`, `ensure_runtime`, `warm_index`, …) must be called with **`task=True`**. See [`docs/guide/tasks.md`](docs/guide/tasks.md).
+
+## Typical flow
 
 ```text
 create_session
   → import_project(source=<git|path>, task=True)
   → checkout_workspace
-  → ensure_runtime(language, language_version="3.11", task=True)
-  → install_apt_packages([...], task=True)          # optional, no allowlist
-  → install_workspace_deps(packages=[...], task=True)  # venv / node_modules / go mod
-  → warm_index(..., task=True)
-  → blast_radius / explore_symbol   # python → site-packages
+  → ensure_runtime(language=…, task=True)
+  → install_workspace_deps(…, task=True)   # optional
+  → warm_index(task=True)
+  → blast_radius / explore_symbol / …
   → close_session
 ```
 
-## Runbooks
+Step-by-step: [`docs/guide/runbook-solo.md`](docs/guide/runbook-solo.md).
+
+## Use it when
+
+- Impact analysis before a refactor (`blast_radius`)
+- Symbol navigation where grep is too noisy (`explore_symbol`)
+- Many agent turns that should reuse one warm index
+
+## Docs
 
 | Doc | When |
 |-----|------|
-| [`docs/guide/runbook-solo.md`](docs/guide/runbook-solo.md) | Поднять agent-lsp **самостоятельно** |
-| [`docs/guide/runbook-with-vmcp.md`](docs/guide/runbook-with-vmcp.md) | Поднять **вместе с vmcp** (GraphQL aliases) |
-| [`docs/guide/workspace-deps-validation.md`](docs/guide/workspace-deps-validation.md) | Зафиксированный validation-отчёт |
-| [`infra/vmcp/`](infra/vmcp/) | Пример `registry.json` + sidecar |
+| [`docs/guide/runbook-solo.md`](docs/guide/runbook-solo.md) | Run alone |
+| [`docs/guide/runbook-with-vmcp.md`](docs/guide/runbook-with-vmcp.md) | Behind vmcp |
+| [`docs/guide/tasks.md`](docs/guide/tasks.md) | Why `task=True` |
+| [`docs/guide/workspace-deps.md`](docs/guide/workspace-deps.md) | Install deps in the runtime |
+| [`docs/`](docs/) | Full index |
+
+## Install as a tool
 
 ```bash
-./scripts/verify_runbook.sh solo
-./scripts/verify_runbook.sh with-vmcp   # + checks vmcp source / optional :8765 health
-```
-
-## Install (PyPI / uv)
-
-Published on tags `v*` as **`agent-lsp-real-inspect-mcp`**
-(upstream already owns the PyPI name `agent-lsp`).
-
-```bash
-uvx agent-lsp-real-inspect-mcp --help
-uvx agent-lsp-real-inspect-mcp==0.1.7
-# or
 uv tool install agent-lsp-real-inspect-mcp
+agent-lsp-real-inspect-mcp --help
+# short alias:
 agent-lsp --help
 ```
 
-Cut a release: `git tag -a v0.1.7 -m v0.1.7 && git push origin v0.1.7`  
-Setup (один Trusted Publisher + env `pypi`): [`docs/guide/pypi-release.md`](docs/guide/pypi-release.md).
-
-## Coverage
-
-Python ≠ Rust. Gate = **медиана ≥ 93%** (не среднее).
+## Development
 
 ```bash
-make cov-py
-make cov-rust
-```
-
-## Dev
-
-```bash
+git clone https://github.com/hewimetall/agent-lsp-real-inspect.git
+cd agent-lsp-real-inspect
 uv sync --extra dev
-maturin develop   # one extension: TaskStore + StateStore + GitService + DockerService
+make develop
+uv run agent-lsp      # local stdio MCP
 pytest -q
-make cov
 ```
 
-## LSP container images
-
-Languages from `agent_lsp.runtimes`: **go / python / typescript / rust / cpp**
-(clangd + `compile_commands.json` for C/C++).
+LSP images (needed for real scout runs):
 
 ```bash
 make docker-lsp
-# or: (cd infra/docker/lsp && ./build.sh)
 ```
 
-See [`infra/docker/lsp/README.md`](infra/docker/lsp/README.md).
+See [`infra/docker/lsp/README.md`](infra/docker/lsp/README.md).  
+Release notes: [`docs/guide/pypi-release.md`](docs/guide/pypi-release.md).
 
-## Runtime health
+## License
 
-Dead Docker LSP containers are demoted to `stale` by
-`agent-lsp-runtime-worker` (ADR-0012); the hub also checks `is_running`
-before reuse so scout tools do not hit `Broken pipe`.
+MIT — see [`LICENSE`](LICENSE).
